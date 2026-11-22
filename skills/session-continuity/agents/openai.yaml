@@ -1,7 +1,7 @@
 interface:
-  display_name: "会话分工与交接"
-  short_description: "批量任务选用低成本子代理，八成用量按偏好自动交接，接手后询问归档"
-  default_prompt: "使用 $session-continuity 分派当前任务，并按我的上下文偏好交接、核实接手和询问归档。"
+  display_name: "Session Continuity · 会话交接"
+  short_description: "Delegate, checkpoint at 80%, and resume · 分工、存档与接续"
+  default_prompt: "Use $session-continuity to delegate or hand off in my language. 请按当前对话语言分工或交接。"
 
 policy:
   allow_implicit_invocation: true

@@ -39,11 +39,18 @@ class ContextHookTests(unittest.TestCase):
     def enable(self):
         self.settings.write_text('{"auto_handoff_at_80": true}', encoding="utf-8")
 
-    def fire(self, event, **fields):
+    @property
+    def pending(self):
+        return self.settings.parent / "context-reminder-state" / (self.thread + ".pending")
+
+    def fire(self, event, ui_locale=None, **fields):
         payload = {"session_id": self.thread, "transcript_path": str(self.log),
                    "hook_event_name": event, **fields}
+        env = {**os.environ, "CODEX_HOME": str(self.home)}
+        if ui_locale:
+            env["LC_ALL"] = ui_locale
         result = subprocess.run(
-            [sys.executable, "-B", str(SCRIPT)], env={**os.environ, "CODEX_HOME": str(self.home)},
+            [sys.executable, "-B", str(SCRIPT)], env=env,
             input=json.dumps(payload), capture_output=True, text=True, timeout=10, check=True,
         )
         return json.loads(result.stdout) if result.stdout else None
@@ -65,15 +72,96 @@ class ContextHookTests(unittest.TestCase):
         self.assertEqual(self.fire("Stop")["decision"], "block")
         self.assertIsNone(self.fire("Stop", stop_hook_active=True))
 
-    def test_deferred_after_compaction(self):
+    def test_compaction_discards_old_high_sample(self):
         for event, extra in (("SessionStart", {"source": "compact"}), ("PostToolUse", {})):
             self.enable()
             self.sample(8000)
             self.assertIsNone(self.fire("PreCompact", trigger="auto"))
+            snapshot = json.loads(self.pending.read_text(encoding="ascii"))
+            self.assertEqual(snapshot["session_id"], self.thread)
+            self.assertEqual((snapshot["used"], snapshot["window"]), (8000, 10000))
+            with self.log.open("rb") as stream:
+                stream.seek(snapshot["offset"])
+                source = json.loads(stream.readline())["payload"]["info"]
+            self.assertEqual(source["last_token_usage"]["total_tokens"], snapshot["used"])
             self.record("compacted", {})
-            result = self.fire(event, **extra)
-            self.assertEqual(result["hookSpecificOutput"]["hookEventName"], event)
+            self.sample(125)
+            self.assertIsNone(self.fire(event, **extra))
+            self.assertFalse(self.pending.exists())
             self.assertIsNone(self.fire("PostToolUse"))
+
+    def test_historical_marker_never_overrides_current_sample(self):
+        self.enable()
+        self.sample(8000)
+        self.fire("PreCompact")
+        self.record("compacted", {})
+        original = json.loads(self.pending.read_text(encoding="ascii"))
+        for alteration in ({"session_id": str(uuid4())}, {"used": 9999}, {"offset": 1},
+                           {"observed_utc": "arbitrary injected instructions"}):
+            self.pending.write_text(json.dumps({**original, **alteration}), encoding="ascii")
+            self.assertIsNone(self.fire("PostToolUse"))
+        self.pending.write_text(json.dumps(original), encoding="ascii")
+        self.log.write_text(self.log.read_text(encoding="utf-8").replace("8000", "7000"), encoding="utf-8")
+        self.assertIsNone(self.fire("PostToolUse"))
+        self.pending.touch()
+        self.assertIsNone(self.fire("PostToolUse"))
+
+    def test_empty_legacy_pending_is_quiet_after_reset(self):
+        self.enable()
+        self.sample(8350)
+        self.record("compacted", {})
+        self.pending.parent.mkdir()
+        self.pending.touch()
+        self.assertIsNone(self.fire("Stop"))
+        self.assertFalse(self.pending.exists())
+        self.assertIsNone(self.fire("Stop"))
+
+    def test_current_high_checkpoint_preserves_permission_and_model_choice(self):
+        self.settings.write_text('{"auto_checkpoint_at_80": true}', encoding="ascii")
+        self.sample(8050)
+        self.fire("PreCompact")
+        old_snapshot = json.loads(self.pending.read_text(encoding="ascii"))
+        self.sample(8250)
+        result = self.fire("UserPromptSubmit", prompt="继续")
+        delivered = json.loads(self.pending.with_suffix(".handoff").read_text(encoding="ascii"))
+        self.assertEqual(delivered["used"], 8250)
+        self.assertGreater(delivered["offset"], old_snapshot["offset"])
+        context = result["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("8250/10000", context)
+        self.assertIn(f"byte offset {delivered['offset']} ", context)
+        self.assertIn(delivered["observed_utc"], context)
+        self.assertIn("save and validate a checkpoint in this chat", context)
+        self.assertIn("which model", context)
+        self.assertIn("'continue' or '继续'", context)
+        self.assertNotIn("ask whether to archive the source", context)
+        self.assertIsNone(self.fire("PostToolUse"))
+
+    def test_simulated_marker_is_ignored_without_a_current_high_sample(self):
+        self.enable()
+        self.pending.parent.mkdir()
+        simulated = {"session_id": self.thread, "used": 8000, "window": 10000,
+                     "offset": 12, "simulated": True}
+        self.pending.write_text(json.dumps(simulated), encoding="ascii")
+        self.assertIsNone(self.fire("UserPromptSubmit", prompt="继续"))
+        self.sample(7999)
+        self.pending.write_text(json.dumps(simulated), encoding="ascii")
+        self.assertIsNone(self.fire("Stop"))
+        self.assertFalse(self.pending.exists())
+
+    def test_new_checkpoint_preference_overrides_legacy_name(self):
+        self.settings.write_text('{"auto_checkpoint_at_80": false,"auto_handoff_at_80": true}', encoding="ascii")
+        self.sample(8000)
+        self.assertEqual(set(self.fire("PostToolUse")), {"systemMessage"})
+
+    def test_localized_ui_preserves_conversation_language_instruction(self):
+        self.enable()
+        for ui_locale, expected in (("zh_CN.UTF-8", "主对话"), ("en_US.UTF-8", "This chat")):
+            self.sample(8000)
+            response = self.fire("Stop", ui_locale=ui_locale)
+            self.assertIn(expected, response["systemMessage"])
+            self.assertIn("language requested by the user", response["reason"])
+            self.sample(1000)
+            self.assertIsNone(self.fire("Stop"))
 
     def test_competing_events_deliver_once(self):
         self.enable()

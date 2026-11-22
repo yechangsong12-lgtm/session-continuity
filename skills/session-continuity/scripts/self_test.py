@@ -85,7 +85,7 @@ def main() -> int:
         targeted_validate = run([str(SCRIPT_DIR / "validate.py"), "--root", str(root), "--target", "pricing-ui"])
         assert json.loads(targeted_validate.stdout)["ok"] is True
         targeted_bootstrap = run([str(SCRIPT_DIR / "bootstrap.py"), "--root", str(root), "--target", "pricing-ui",
-                                  "--prepare-thread", "--thread-id", "test-source"])
+                                  "--prepare-thread", "--approved-model", "test-model", "--thread-id", "test-source"])
         assert ".agent/continuity/targets/pricing-ui/current.yml" in targeted_bootstrap.stdout
         target_dir = root / ".agent" / "continuity" / "targets" / "pricing-ui"
         handoff = (target_dir / "handoff.md").read_text(encoding="utf-8")
@@ -203,7 +203,7 @@ def main() -> int:
         )
         explicit_guard_data = json.loads(explicit_guard.stdout)
         assert explicit_guard_data["metrics"]["compaction_markers"] == 1
-        assert explicit_guard_data["evaluation"]["action"] == "new_thread"
+        assert explicit_guard_data["evaluation"]["action"] == "review_in_current_chat"
 
         high_log = root / "high-context.jsonl"
         high_log.write_text(
@@ -244,7 +244,7 @@ def main() -> int:
             ]
         )
         guard_rollover_data = json.loads(guard_rollover.stdout)
-        assert guard_rollover_data["evaluation"]["action"] == "new_thread"
+        assert guard_rollover_data["evaluation"]["action"] == "review_in_current_chat"
         assert guard_rollover_data["checkpoint"]["ok"] is True
         request_path = rollover_root / ".agent" / "continuity" / "rollover-request.json"
         assert request_path.exists()
@@ -252,6 +252,17 @@ def main() -> int:
         assert request_data["status"] == "ready"
         assert request_data["source_thread_id"] == "019f-source-thread"
         assert request_data["prompt_sha256"]
+        assert request_data["thread_action"] == "confirm_chat_and_model"
+        premature = run([str(SCRIPT_DIR / "thread_receipt.py"), "--root", str(rollover_root),
+                         "--created-thread-id", "unapproved"], expect_ok=False)
+        assert "require user confirmation" in premature.stderr
+        unselected = run([str(SCRIPT_DIR / "bootstrap.py"), "--root", str(rollover_root),
+                          "--prepare-thread"], expect_ok=False)
+        assert "model choice" in unselected.stderr
+        run([str(SCRIPT_DIR / "bootstrap.py"), "--root", str(rollover_root), "--prepare-thread",
+             "--approved-model", "test-model", "--thread-id", "019f-source-thread"])
+        approved = json.loads(request_path.read_text(encoding="utf-8"))
+        assert approved["thread_action"] == "create_thread" and approved["approved_model"] == "test-model"
         receipt = run(
             [
                 str(SCRIPT_DIR / "thread_receipt.py"),

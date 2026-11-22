@@ -1,71 +1,67 @@
 ---
 name: session-continuity
-description: 批量数据整理、简单网络搜索时自动选用低成本子代理；主对话用量达到 80% 时按用户偏好提醒或自动交接，在新对话接手后询问是否归档原对话。也用于上下文窗口设置、分支选择、checkpoint、handoff 和 resume。
+description: Delegate bulk data cleanup and simple web searches to low-cost subagents, monitor context usage, and checkpoint, hand off or resume chats at 80%. 批量整理、简单搜索、上下文设置、80% 自动存档、开聊及选型确认、续接和归档。
 ---
 
-# 会话分工与交接
+# Session Continuity
 
-用主对话保存用户目标、约束、取舍和验收结论。让中间检索、长日志和逐行数据留在执行它们的子任务，主对话根据可回查的证据继续工作。先判断宿主是否支持独立上下文、选模型、读取用量和创建对话。下面的分工和交接方法可由支持 Markdown 指令的助手采用。
+English · [简体中文](references/workflow.zh-CN.md)
 
-## 什么时候拆任务
+Use the user's requested language for summaries, alerts you write, takeover acknowledgements and the archive question. When the user has not specified a language, follow the conversation. Pass that choice along with the work. Keep IDs, paths, source quotes and numerical evidence intact. Use side-by-side translations when requested. 中文任务可直接使用上方的简体中文指南。
 
-| 当前需要 | 做法 |
+## Decide where the work belongs
+
+| Situation | Action |
 | --- | --- |
-| 批量清洗数据、简单联网检索、读长日志，或按明确标准独立核对一批材料 | 交给有独立上下文的低成本子代理。传目标、输入位置、范围、验收条件和必要背景。 |
-| 结论依赖主对话刚做的决策，工作很短，拆出后反而要重讲一遍 | 在主对话继续。 |
-| 想试另一条路线，两个方案都依赖此前讨论 | 建议从当前会话开分支，注明要对比什么。用户要求开分支后使用宿主对应功能。 |
-| 已切换到无关目标，或某项旁支需要用户独立查看、追加指示、长期跟进 | 提醒用户开独立对话，给出可直接使用的任务简报。独立目标只带相关背景。 |
-| 主对话达到有效上下文窗口的 80% | 已启用自动交接时，按下文生成交接、新建对话并核实接手，最后询问是否归档原对话。其余情况按用户选择提醒或存档进度。 |
+| Bulk data cleanup, straightforward searches, long logs or clearly bounded checks | Delegate to a subagent with its own context. Specify scope, input locations, expected result and files it may change. |
+| “Continue”, a small revision to the same deliverable, or fixing one image | Continue in the same chat. |
+| Trying a second approach from the same discussion | Explain the alternative and ask whether to branch and which available model to use. Wait for consent. |
+| A new goal, or a side task the user wants to monitor and direct independently | Ask whether to open a separate chat and which model to use. Offer the current model, a specific available model, or agent selection. Wait for consent. Keep the main chat active. |
+| The source chat reaches 80% of its effective context window | Follow the user's reminder or automatic checkpoint preference below. |
 
-这些条件参考 Claude Code 的子代理、分支和会话管理建议。80% 是本流程采用的提醒阈值。各宿主的创建、恢复与压缩命令按本机版本选择。[Claude Code 子代理](https://code.claude.com/docs/en/sub-agents) · [会话管理](https://code.claude.com/docs/en/sessions) · [最佳实践](https://code.claude.com/docs/en/best-practices) · [命令参考](https://code.claude.com/docs/en/commands)
+Codex may select this skill from the task description. The delegation, branch and fresh-chat choices draw on Claude Code's guidance. The 80% threshold belongs to this skill. [Claude Code subagents](https://code.claude.com/docs/en/sub-agents) · [Sessions](https://code.claude.com/docs/en/sessions) · [Best practices](https://code.claude.com/docs/en/best-practices)
 
-## 选模型与接收结果
+A background subagent returns its findings to the current chat. An ordinary side chat is a user-visible workspace the user can direct independently. When requesting consent for a side chat, clarify whether the model choice applies this time or should become a fixed or automatic preference. Once the side chat takes over its part, the main chat continues. A side task never prompts archiving the main chat. Bring the side chat’s results, sources and detailed file locations back to the main chat first. Once both tasks are complete, check for outstanding work or review, evidence held only in the side chat, and a request to keep it. Keep the side chat available while any of those remain. When it is eligible for cleanup, archive the named **side chat** automatically only if the user authorized automatic cleanup. Otherwise ask about that specific side chat.
 
-- 用户已为本次任务指定模型时按本次选择执行。用户明确表示“总是用某模型”时按所选范围记下该偏好；临时指定只适用本次。本机可用模型清单在执行时核对。
-- 没有既定偏好且选择有实际影响时，可询问“这次用哪个模型、以后固定用哪个，还是由我按任务和成本选择？”给出宿主实际可用的选项。用户选择自动，或普通任务无需打断时，在具备所需工具、上下文和准确度的模型中优先选 token 成本低的。价格未知时用宿主标示的经济档作依据，并按需要说明判断依据。固定模型不可用时说明并给可用替代，让用户决定是否更换固定偏好。
-- Sol 是可选项。其他助手可选各自可用的低成本模型。不能单独选择模型或启动代理时，说明实际执行方式，采用定向检索、文件整理和简短回报。
-- 给子代理划清任务和可写的文件范围。一次性检索优先让它在干净上下文中工作。完成后只交回**关键结论、来源、明细文件位置**，有缺口或冲突时一并说明。来源可用原始链接、数据日期或本地表的工作表及行范围。简短检索可直接引用来源，已有明细时复用原文件。
-- 主对话回查影响决定的数字、冲突来源和关键样本，再结合用户约束决策。批量整理和简单检索可按任务描述直接选用本技能，后台子代理将摘要交回主对话。需要单独跟进的旁支先建议开独立聊天。
+## Delegate and bring back the findings
 
-## 上下文达到 80% 时
+Honor a model selected for this task. Save a fixed choice only when the user asks for it within an identified scope. If the choice materially affects the work and the user has no established preference, offer three options: choose for this task, choose a standing model, or let the agent pick. For automatic selection, prefer a low-token-cost model that has the tools, context and accuracy the task requires. Use the host's economy tier when verified prices are unavailable. If the fixed model is unavailable, identify available substitutes before changing the standing preference.
 
-调整 Codex 默认窗口、安装 Codex 事件提醒或给 Claude Code 状态栏添加 80% 提示时，读 [上下文配置与提醒](references/context-settings.md)。只改用户指定的设置。窗口长度、有效窗口和自动压缩阈值分别核验。
+Ask the subagent for **key findings, sources and the location of detailed results**. Include unresolved discrepancies and the source date, page, sheet or row when it matters. Reuse existing detail files. A short search can return its links directly. In the main chat, check the figures and samples that affect the decision. When the host lacks independent subagents or model selection, describe how the work was performed.
 
-用户可为自己启用“达到 80% 自动交接”。Codex 本机将这项偏好保存在 `$CODEX_HOME/hooks/session-continuity.json` 的 `{"auto_handoff_at_80": true}`。该用户主动开启后，每次主对话越过阈值均可直接交接，无须点名技能或再次确认创建接续对话。新安装默认提醒，按使用者自己的选择启用自动交接。一般旁支、归档和删除各有独立的授权范围。
+## What to do at 80%
 
-在最近有效样本达到或超过 80% 的下一个可执行事件，按下面的顺序完成自动交接。
+For the Codex window setting, event hook and Claude Code status line, see [context settings in English](references/context-settings.en.md) or [简体中文](references/context-settings.md).
 
-1. **保存现状。** 来源对话作为唯一交接发起者。先查同一来源对话的交接请求和回执；同一次交接已有接收对话或待就绪 ID 时从那一步继续。按下文写交接包并校验，记录工作区、来源对话 ID、修订号、未完成事项和第一个可执行动作。任务若已完成就交接完成状态。
-2. **创建接续对话。** 在同一工作区准备与该修订匹配的启动提示，按下文创建并记录宿主返回的 ID。后续新消息沿用这个接续对话。创建结果不明时，先从宿主和回执核实已有对话。接手期间由新对话执行交接范围内的工作，来源对话负责观察接手结果。
-3. **核实接手。** 新对话首轮校验对应的交接包，阅读摘要并复查第一步所需的证据，在用户可见的进度中简短说明“已接手修订 N，已核对……，正在……”并继续执行；任务已完成或受阻时报告已核实的结果或阻塞原因。来源对话用 `wait_threads` 等宿主观察接口读取目标对话状态，必要时读取其最近一条实际回复。接手确认须与目标 ID、修订和任务相符。已创建但仍在准备、校验失败或尚无接手证据时，保留来源对话，继续核实或报告具体阻塞。
-4. **询问归档。** 确认接手后，在来源对话给出新对话入口及接手进度，然后问一次“新对话已接手，是否归档这个原对话？”仅当用户明确同意归档该来源对话时，对其具体 ID 执行归档。用户选择保留或尚未答复时，让原对话保持可见。重复的高水位事件复用已有交接和归档询问。
+New installations show a reminder when the Codex hook is registered. A user can enable automatic handoff in their personal `$CODEX_HOME/hooks/session-continuity.json` with `{"auto_checkpoint_at_80": true}`. That choice lets the source save and validate its checkpoint automatically. Before creating a user-visible successor, honor the user’s creation and model preferences. When either choice is open, ask whether they want a new chat and which model to use. An explicit choice for this transfer or standing permission for creation and model selection can supply those answers. An economy-model preference for background subagents is separate.
 
-使用其他宿主时，优先读取它的用量仪表或事件。仅有状态栏时，越线只产生可见提示，需在下一次可执行的交互中处理。缺少可靠用量时，用标明为“阶段性”的进度保存建议。缺少开新对话的能力时，交付已校验的摘要与启动提示；待实际接收方确认接手后再询问归档。
+1. **Verify the crossing.** Use the host's effective window and an actual usage sample from the source chat. For a deferred event after compaction, verify the earlier qualifying sample in that same source chat and recheck its current usage. If compaction has restored ample room, keep the source chat active and reassess the need for transfer. Simulations use only their designated test chats. If usage is unavailable, offer a checkpoint at a work boundary and describe what prompted it.
+2. **Checkpoint once.** Check existing requests and receipts for this source chat and transfer. Reuse a known successor or pending creation ID. Save and validate the current revision, including the workspace, active goal, outstanding requests and next action.
+3. **Create the successor.** Use the validated startup prompt and original workspace. Record the ID returned by the host. If creation is uncertain, check the host and receipt before retrying. Keep one owner for the work while the source observes the handoff.
+4. **Verify takeover.** In its own chat, the successor validates the expected revision, opens the handoff, checks the evidence for the first task, and states its next action or verified completion or blocker in the user's language. The source observes this real response through the host, for example with Codex `wait_threads`. Match the chat ID, revision and task. A pending ID or a receipt identifies the destination. Its reply establishes takeover.
+5. **Ask about the source only for a full migration.** Immediately before asking, measure the actual source again and check for additional work left there. Keep it active if usage has fallen after compaction or work remains. Confirm the source still meets the 80% threshold, the entire main task moved and the successor acknowledged takeover. Then provide the destination and ask once, “The new chat has taken over. Would you like to archive this original chat?” Archive only the identified source after explicit agreement. Also honor a user’s explicit archive request for a named chat. A simulation may exercise the archive question only for its designated temporary source if the user requested that test. Side chats and handoff tests leave business chats active. If creation or verification remains pending, deliver the checkpoint and describe what remains.
 
-## 写一份接手后能开工的交接
+Claude Code's status-line adapter displays usage and the threshold reminder. The user can request a handoff when the prompt appears. Other hosts can use their own context readings, model routing and chat controls.
 
-交接前回读用户最新修正和原始证据。只写接手者执行下一步所需的内容，省略工具调用流水账。按任务实际情况填写：
+## Write the checkpoint
 
-1. **目标与完成条件**。写当前要交什么、交到哪里、什么结果算完成。保留用户修正后的约束、授权范围和仍需用户决定的事项。
-2. **进度与决定**。列出已完成且验证过的工作、正在执行的任务和待做项。对影响后续工作的决定写明原因及依据，清楚区分观察、推断和用户批准。
-3. **证据与产物**。附关键来源、日期、明细文件和定位信息。对改动写可复核的测试结果。运行中的任务写任务 ID、现状和安全的下次检查动作。省略凭据、会话全文、访问令牌及带授权参数的链接。
-4. **缺口与下一步**。交代仍未解决的问题、已试过且影响下一步的路径。给接手者一个可立即执行的动作，写清在哪执行、预期看到什么。
-5. **接手验证**。从新会话视角按交接重找核心文件与依据，确认第一步可执行。核验失败时标出具体缺项；文件完整性测试、业务验收及用户批准分别记录。
+- **Goal and constraints.** Name the deliverable, destination, acceptance criteria and authorized scope. Carry forward compatible requests added mid-task alongside the latest corrections. Mark decisions that still belong to the user.
+- **Progress and decisions.** Separate completed and verified work, active jobs and remaining tasks. For important decisions, record who decided, the rationale and the evidence. Distinguish user approval from an inferred preference or a successful technical check.
+- **Evidence and artifacts.** Include source links or paths, sheet names and rows, dates and verification results. Record running job IDs and the next safe check. Keep credentials, access-bearing URLs and full chat logs out of the checkpoint.
+- **First next action.** Identify a concrete step, the file or system to use, and the expected result. Include relevant blockers or failed approaches. From a fresh chat, verify that the cited evidence can be found.
 
-## 保存、恢复与开新对话
+## Save, resume and record a destination
 
-- 在实际工作区运行脚本。先读已有的 `.agent/continuity/current.yml`、`handoff.md` 和清单。多个独立目标共用工作区时，用 `--target` 配唯一且可读的英文或数字短名，中文全称写入摘要。写下一版时整合仍有效的决定、待办、阻塞、证据指针和复核状态。
-- 用 [checkpoint.py](scripts/checkpoint.py) 的 `--latest-user-request`、`--active-goal` 记目标，用 `--source` 标明决定的实际来源（例如 `claude`、`user`），以可重复的 `--decision`、`--context-file`、`--changed-file`、`--blocked-item` 和 `--open-task` 记交接要素。各项依据不同就把具体来源附在该项决定内；`--evidence` 用于共同证据。脚本从 `--root` 指定的工作区生成版本、摘要和清单。已有项目约定交付位置时，只在内部工作目录保存交接。
-- 用 [validate.py](scripts/validate.py) 核对文件、哈希、脱敏状态与写锁。使用同一个 `--root` 和可选 `--target`。校验通过，再读 `handoff.md` 和 [bootstrap.py](scripts/bootstrap.py) 输出的接续提示。清单覆盖交接包自身。接手时回到所引源文件或网页复核关键数值和外部状态，然后执行第一项待办。
-- 收到用户明确的新对话指示，或达到该用户已启用的 80% 自动交接阈值时，用 `bootstrap.py --prepare-thread` 生成与当前版本匹配的请求，使用其输出作为新对话的初始提示，指定原工作区。告知接收方按“核实接手”在自身对话报告结果。宿主实际返回 ID 后，用 [thread_receipt.py](scripts/thread_receipt.py) 的 `--created-thread-id` 记录；仍在准备工作树时用 `--pending-worktree-id`。只有准备文件时，报告“交接已准备”。回执用于定位接收方，实际接手以接收方核验结果为准。
-- 在支持 Python 的其他宿主，通用交接脚本也可使用。将启动提示中的 Codex 专属入口替换为当前宿主可用的命令或文件路径。没有本地脚本执行能力时，直接用上面的交接格式输出一段可复制的交接。
-
-例如在已安装 Python 3.11+ 的环境中，从技能目录执行下面的命令。将工作区、实际证据和待办替换为本次任务的内容。Windows 可使用已验证可用的 Python 解释器执行相同的参数。
+Run the scripts with Python 3.11+ from the installed skill directory. Pass the same `--root` and optional `--target` throughout. For independent goals in the same workspace, use distinct short ASCII target names and put the full user-facing labels in the summary. Read the current checkpoint before revising it. Keep active decisions, evidence, tasks and blockers in the next revision.
 
 ```text
-python scripts/checkpoint.py --root "/path/to/work" --latest-user-request "核对价格表并标出待查项" --active-goal "交付核对后的价格表" --decision "已核对 A2:A30，依据为工作区内的原始报价表" --context-file "原始报价表.csv" --open-task "打开报价表第 31 行，与供应商报价核对币种"
+python scripts/checkpoint.py --root "/path/to/work" --latest-user-request "Check quoted prices" --active-goal "Reconcile the price sheet" --decision "Rows 2 through 30 match the supplier file" --context-file "supplier-quotes.csv" --open-task "Check currency on row 31 against the supplier quote"
 python scripts/validate.py --root "/path/to/work"
 python scripts/bootstrap.py --root "/path/to/work"
 ```
 
-需要评估长日志、长循环等压力信号时使用 [guard.py](scripts/guard.py)。它的综合判断适合安排阶段存档，80% 提醒以宿主采样为准。已安装 Bash 快捷命令时可沿用 `sc save`、`sc v`、`sc h` 等。三方复核使用[三方交接约定](references/triparty.md)，核对失败时查[故障处理](references/failure-modes.md)，文件结构见[交接结构](references/schema.md)。
+- [checkpoint.py](scripts/checkpoint.py) saves versioned state under `.agent/continuity/`. Use `--source` for the decision's origin and repeat `--decision`, `--context-file`, `--changed-file`, `--blocked-item` and `--open-task` as needed. Attach individual sources to their decisions. Use `--evidence` for shared evidence.
+- [validate.py](scripts/validate.py) checks the package, hashes, redaction indicators and writer lock. Review external sources again where they may have changed. Preserve partial review status. Read `handoff.md` and use [bootstrap.py](scripts/bootstrap.py) for the startup prompt.
+- When a new chat is authorized, `bootstrap.py --prepare-thread --approved-model MODEL_ID` records a request tied to the saved revision and prompt. Use its output to start the successor. Record the host's returned ID with [thread_receipt.py](scripts/thread_receipt.py) and `--created-thread-id`, or use `--pending-worktree-id` while setup is pending. Then verify takeover as described above.
+- Hosts with filesystem access can use the same checkpoint. Adjust the startup command to the receiver's available interpreter or host tools. For chat-only environments, provide a copyable handoff using the same fields.
+- Use [guard.py](scripts/guard.py) for broader pressure signals such as long logs. Its checkpoint suggestions complement the measured 80% event. See [failure recovery](references/failure-modes.md), [checkpoint schema](references/schema.md) and [three-party review](references/triparty.md) as needed.

@@ -65,7 +65,7 @@ Important fields:
 | `metrics.compaction_markers` | integer | Count of explicit compaction markers seen in structured log events. |
 | `metrics.large_tool_outputs` | integer | Tool outputs above the configured large-output threshold. |
 | `evaluation.severity` | string | `ok`, `watch`, `checkpoint_recommended`, or `rollover_required`. |
-| `evaluation.action` | string | `none`, `checkpoint`, or `new_thread`. |
+| `evaluation.action` | string | `none`, `checkpoint`, or `review_in_current_chat`. |
 | `evaluation.reasons[]` | array | Trigger reasons used for the decision. |
 | `checkpoint` | object/null | Checkpoint command result when a checkpoint was written. |
 | `rollover_request` | object/null | Summary of generated `rollover-request.json`. |
@@ -89,7 +89,8 @@ Required fields:
 | `prompt` | string | Initial prompt for the fresh Codex thread. |
 | `prompt_sha256` | string | SHA256 of `prompt`. |
 | `status` | string | `ready` or `blocked`. |
-| `thread_action` | string | `create_thread` or `manual_repair_required`. |
+| `thread_action` | string | `confirm_chat_and_model` while a choice is outstanding, `create_thread` after approval, or `manual_repair_required`. |
+| `approved_model` | string | Concrete model selected for this transfer after authorization. |
 | `validation` | object | Validation gates and errors at request time. |
 | `trigger` | object | Context-pressure evaluation. |
 | `metrics` | object | Session-log metrics used by the guard. |

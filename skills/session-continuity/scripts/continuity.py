@@ -323,53 +323,72 @@ def resolve_against_root(value: str, root: Path) -> Path:
     return path.resolve()
 
 
+def use_chinese_for_handoff(state: dict[str, Any]) -> bool:
+    texts = (state.get("latest_user_request", ""), state.get("active_goal", {}).get("objective", ""))
+    return any(re.search(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", text or "") for text in texts)
+
+
 def build_handoff(state: dict[str, Any]) -> str:
     target = state.get("target") or ""
+    chinese = use_chinese_for_handoff(state)
+    active = state.get("active_goal", {})
+    statuses = {
+        "in_progress": "进行中", "complete": "已完成", "completed": "已完成", "blocked": "受阻",
+        "passed": "通过", "partial": "部分完成", "not_required": "无需复核",
+        "ready": "就绪", "failed": "失败", "pending": "待核验",
+    } if chinese else {}
+
+    goal_status = active.get("status", "")
     lines = [
-        "# Session Continuity Handoff",
+        "# 会话交接摘要" if chinese else "# Session Continuity Handoff",
         "",
-        f"- Workstream: {state.get('workstream', '')}",
+        f"- {'任务名称　' if chinese else 'Workstream: '}{state.get('workstream', '')}",
     ]
     if target:
-        lines.append(f"- Target: {target}")
+        lines.append(f"- {'交接范围　' if chinese else 'Target: '}{target}")
     lines.extend([
-        f"- Revision: {state.get('revision', '')}",
-        f"- Updated: {state.get('updated_at', '')}",
-        f"- Latest request: {state.get('latest_user_request', '')}",
-        f"- Active goal: {state.get('active_goal', {}).get('objective', '')}",
-        f"- Goal status: {state.get('active_goal', {}).get('status', '')}",
+        f"- {'修订号　' if chinese else 'Revision: '}{state.get('revision', '')}",
+        f"- {'更新时间　' if chinese else 'Updated: '}{state.get('updated_at', '')}",
+        f"- {'用户最新要求　' if chinese else 'Latest request: '}{state.get('latest_user_request', '')}",
+        f"- {'当前目标　' if chinese else 'Active goal: '}{active.get('objective', '')}",
+        f"- {'进度　' if chinese else 'Goal status: '}{statuses.get(goal_status, goal_status)}",
         "",
-        "## Gates",
+        "## 校验结果" if chinese else "## Gates",
         "",
     ])
+    checks = {
+        "probe_status": "文件可读性", "redaction_status": "敏感信息检查",
+        "hash_status": "文件完整性", "review_status": "复核", "bootstrap_status": "接续提示",
+    } if chinese else {}
     for key, value in state.get("gates", {}).items():
-        lines.append(f"- {key}: {value}")
-    lines.extend(["", "## Decisions", ""])
+        lines.append(f"- {checks.get(key, key)}{'　' if chinese else ': '}{statuses.get(value, value)}")
+    lines.extend(["", "## 已作决定与依据" if chinese else "## Decisions", ""])
+    empty = "- 暂无记录。" if chinese else "- None recorded."
     decisions = state.get("decisions", [])
     if decisions:
         for item in decisions:
             lines.append(f"- [{item.get('source', 'codex')}] {item.get('text', '')}")
             if item.get("evidence"):
-                lines.append(f"  - Evidence: {item['evidence']}")
+                lines.append(f"  - {'依据　' if chinese else 'Evidence: '}{item['evidence']}")
     else:
-        lines.append("- None recorded.")
-    lines.extend(["", "## Open Tasks", ""])
+        lines.append(empty)
+    lines.extend(["", "## 待办事项" if chinese else "## Open Tasks", ""])
     tasks = state.get("open_tasks", [])
     if tasks:
         lines.extend(f"- {task}" for task in tasks)
     else:
-        lines.append("- None recorded.")
-    lines.extend(["", "## Blocked Items", ""])
+        lines.append(empty)
+    lines.extend(["", "## 阻塞项" if chinese else "## Blocked Items", ""])
     blocked = state.get("blocked_items", [])
     if blocked:
         lines.extend(f"- {item}" for item in blocked)
     else:
-        lines.append("- None recorded.")
+        lines.append(empty)
     changed_files = state.get("changed_files") or []
     if changed_files:
-        lines.extend(["", "## Changed Files", ""])
+        lines.extend(["", "## 改动文件" if chinese else "## Changed Files", ""])
         lines.extend(f"- `{path}`" for path in changed_files)
-    lines.extend(["", "## Context To Load", ""])
+    lines.extend(["", "## 接手时读取" if chinese else "## Context To Load", ""])
     for item in state.get("context_to_load", []):
         lines.append(f"- `{item}`")
     lines.append("")
@@ -395,37 +414,55 @@ def build_bootstrap(state: dict[str, Any]) -> str:
         language = "sh"
         command = shlex.join(arguments)
     state_dir = f".agent/continuity/targets/{target}" if target else ".agent/continuity"
-    lines = [
-        "# Resume This Workstream",
-        "",
-        f"Load `{state_dir}/current.yml` and `{state_dir}/handoff.md` as the source of truth for this workspace.",
-        "",
-        f"Workspace root: {workspace_root}",
-    ]
-    if target:
-        lines.append(f"Target handoff: {target}")
-    lines.extend([
-        f"Workstream: {state.get('workstream', '')}",
-        f"Revision: {state.get('revision', '')}",
-        f"Latest user request: {state.get('latest_user_request', '')}",
-        f"Active goal: {state.get('active_goal', {}).get('objective', '')}",
-        f"Goal status: {state.get('active_goal', {}).get('status', '')}",
-        "",
-        "Required checks before continuing:",
-        "",
-        "1. Validate the saved checkpoint in its workspace.",
-        "",
-        f"```{language}",
-        command,
-        "```",
-        "",
-        "2. If validation fails or the revision differs from the revision above, report the problem here before proceeding.",
-        f"3. After validation, read `{state_dir}/handoff.md` and check the source for the first open task, or confirm the recorded completion or blocker.",
-        "4. In this destination chat, post a brief acknowledgement in the user's language. Include the validated revision, one source you checked, and the next action or final status. Mention partial review when applicable.",
-        "5. Continue the authorized work from that point. The source chat handles the user's archive decision.",
-    ])
+    active = state.get("active_goal", {})
+    chinese = use_chinese_for_handoff(state)
+    if chinese:
+        lines = [
+            "# 接续当前任务", "",
+            f"从 `{state_dir}/current.yml` 和 `{state_dir}/handoff.md` 读取已保存的工作状态。",
+            "", f"工作区　{workspace_root}",
+        ]
+        if target:
+            lines.append(f"交接范围　{target}")
+        lines.extend([
+            f"任务名称　{state.get('workstream', '')}",
+            f"修订号　{state.get('revision', '')}",
+            f"用户最新要求　{state.get('latest_user_request', '')}",
+            f"当前目标　{active.get('objective', '')}",
+            f"进度标记　`{active.get('status', '')}`",
+            "", "## 接手步骤", "", "1. 在指定工作区运行以下命令，核验交接包。",
+        ])
+        after_check = [
+            "2. 如校验失败或修订号与上文不同，请先在本对话报告具体问题。",
+            f"3. 校验通过后，阅读 `{state_dir}/handoff.md`。回查第一项待办所依赖的原始资料；任务已完成或受阻时，核实已记录的结果或原因。",
+            "4. 在本接手对话中沿用用户在原对话使用的语言，简短确认已核验的修订号、查过的一项依据，以及下一步或最终状态。复核仅部分完成时一并说明。",
+            "5. 接着执行已获授权的任务，在本对话报告结果、证据位置和未决事项，供主对话取回。",
+        ]
+    else:
+        lines = [
+            "# Resume This Workstream", "",
+            f"Load `{state_dir}/current.yml` and `{state_dir}/handoff.md` as the source of truth for this workspace.",
+            "", f"Workspace root: {workspace_root}",
+        ]
+        if target:
+            lines.append(f"Target handoff: {target}")
+        lines.extend([
+            f"Workstream: {state.get('workstream', '')}",
+            f"Revision: {state.get('revision', '')}",
+            f"Latest user request: {state.get('latest_user_request', '')}",
+            f"Active goal: {active.get('objective', '')}",
+            f"Goal status: {active.get('status', '')}",
+            "", "Required checks before continuing:", "", "1. Validate the saved checkpoint in its workspace.",
+        ])
+        after_check = [
+            "2. If validation fails or the revision differs from the revision above, report the problem here before proceeding.",
+            f"3. After validation, read `{state_dir}/handoff.md` and check the source for the first open task, or confirm the recorded completion or blocker.",
+            "4. In this destination chat, use the user's language from the source chat. Acknowledge the validated revision, one source you checked, and the next action or final status. Mention partial review when applicable.",
+            "5. Continue the authorized work and report results, evidence locations, and open items here so the main chat can retrieve them.",
+        ]
+    lines.extend(["", f"```{language}", command, "```", "", *after_check])
     if gates.get("hash_status") != "passed" or gates.get("redaction_status") != "passed":
-        lines.extend(["", "Hard stop: validate the continuity package before resuming."])
+        lines.extend(["", "请先完成交接包校验，再继续任务。" if chinese else "Hard stop: validate the continuity package before resuming."])
     lines.append("")
     return "\n".join(lines)
 
@@ -640,7 +677,7 @@ def context_pressure_eval(args: argparse.Namespace, metrics: dict[str, Any]) -> 
     if rank == 2:
         action = "checkpoint"
     elif rank >= 3:
-        action = "new_thread"
+        action = "review_in_current_chat"
     return {
         "severity": severity,
         "action": action,
@@ -707,6 +744,7 @@ def write_rollover_request(
     evaluation: dict[str, Any],
     metrics: dict[str, Any],
     checkpoint: dict[str, Any],
+    approved_model: str = "",
 ) -> dict[str, Any]:
     cdir = continuity_dir(root, target)
     ok, errors, state = validate_package_at(root, target)
@@ -721,7 +759,8 @@ def write_rollover_request(
         "continuity_dir": str(cdir),
         "bootstrap_path": str(bootstrap_path),
         "status": "ready" if ok else "blocked",
-        "thread_action": "create_thread" if ok else "manual_repair_required",
+        "thread_action": ("create_thread" if approved_model else "confirm_chat_and_model") if ok else "manual_repair_required",
+        "approved_model": approved_model,
         "preferred_target": {"type": "projectless", "directoryName": root.name},
         "requires_codex_thread_tool": "create_thread",
         "validation": {
@@ -785,7 +824,7 @@ def command_guard(args: argparse.Namespace) -> int:
             result["ok"] = False
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return 1
-        if evaluation["action"] == "new_thread" or args.write_request:
+        if evaluation["action"] == "review_in_current_chat" or args.write_request:
             request = write_rollover_request(root, args.target, source_thread_id, evaluation, metrics, checkpoint)
             result["rollover_request"] = {
                 "path": str(continuity_dir(root, args.target) / ROLLOVER_REQUEST),
@@ -829,6 +868,8 @@ def command_thread_receipt(args: argparse.Namespace) -> int:
                 request_errors.append("rollover request schema mismatch")
             if request.get("status") != "ready":
                 request_errors.append("rollover request is not ready")
+            if request.get("thread_action") == "confirm_chat_and_model":
+                request_errors.append("new chat and model selection require user confirmation")
             if request.get("workspace_root") != str(root):
                 request_errors.append("rollover request workspace root mismatch")
             if request.get("target", "") != request_target:
@@ -1014,12 +1055,15 @@ def command_bootstrap(args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "errors": errors}, indent=2, ensure_ascii=False), file=sys.stderr)
         return 1
     if args.prepare_thread:
+        if not args.approved_model.strip():
+            print("Confirm creation and model choice first. Pass --approved-model MODEL after approval.", file=sys.stderr)
+            return 2
         cdir = continuity_dir(root, args.target)
         lock = acquire_lock(cdir)
         try:
             request = write_rollover_request(
                 root, args.target, args.thread_id or os.environ.get("CODEX_THREAD_ID", ""),
-                {"reason": "requested_handoff"}, {}, {"ok": True},
+                {"reason": "requested_handoff"}, {}, {"ok": True}, args.approved_model.strip(),
             )
         finally:
             release_lock(lock)
@@ -1087,6 +1131,7 @@ def configure_bootstrap_parser(parser: argparse.ArgumentParser) -> None:
     add_common_root(parser)
     parser.add_argument("--output", default="")
     parser.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
+    parser.add_argument("--approved-model", default="", help="Model ID selected for this new chat, including a concrete choice under an explicit delegation.")
     parser.add_argument("--thread-id", default="", help="Source thread for --prepare-thread. Defaults to CODEX_THREAD_ID.")
     parser.set_defaults(func=command_bootstrap)
 

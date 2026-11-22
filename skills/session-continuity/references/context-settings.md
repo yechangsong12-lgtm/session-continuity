@@ -1,4 +1,6 @@
-# Codex 上下文窗口与提醒
+# 上下文窗口与交接提醒
+
+[English](context-settings.en.md) · 简体中文 · [会话交接流程](workflow.zh-CN.md)
 
 ## 读取、调整和复核窗口
 
@@ -18,17 +20,19 @@ python3 scripts/context_window.py --set <用户明确指定的正整数>
 
 ## 达到 80% 后的处理
 
-`scripts/context-reminder.py` 是可安装的 Codex 命令 hook。它在收到事件时核对主对话的会话 ID 和日志位置，以最近一条可用样本的 `info.last_token_usage.total_tokens / info.model_context_window` 计算用量。桌面百分比可能采用不同的估算。同一次超过阈值只触发一次。
+`scripts/context-reminder.py` 是可安装的 Codex 命令 hook。它在收到事件时核对主对话的会话 ID 和日志位置，以最近一条可用样本的 `info.last_token_usage.total_tokens / info.model_context_window` 计算用量。桌面百分比可能采用不同的估算。同一次超过阈值只触发一次。跨压缩延后处理时，通过来源会话 ID、原始采样字节位置、token 用量与有效窗口复核较早的达标事件；后续低读数可以是压缩的结果。记录中的 UTC 时间表示观察时间。模拟用例单独标注。
 
-默认在界面提醒。希望达到阈值后直接交接的用户，可在本机 `$CODEX_HOME/hooks/session-continuity.json` 设置以下字段。该文件属于用户个人配置。改为 `false` 可恢复普通提醒。
+默认在界面提醒。希望达到阈值后自动保存现场的用户，可在本机 `$CODEX_HOME/hooks/session-continuity.json` 设置以下字段。该文件属于用户个人配置。改为 `false` 可恢复普通提醒。未设置新键时兼容旧键 `auto_handoff_at_80`；两者均只授权自动保存现场。
 
 ```json
-{"auto_handoff_at_80": true}
+{"auto_checkpoint_at_80": true}
 ```
 
-启用后，由主对话生成并校验交接资料，将启动提示交给同一工作区的新对话。新对话确认已读取对应版本、核验交接并能指出下一步后，才询问用户是否归档旧对话。只有用户明确同意才执行归档。如果宿主未提供创建对话或验证接手的能力，交付交接材料并说明尚缺哪一步。用户随时可给本次交接新的指示。
+启用后，先核实真实来源已达到阈值且仍需整体迁移。若压缩已腾出充足空间，保留原对话并重新判断。可以先自动保存并校验现场。创建可见新对话前，询问用户是否需要开聊及选择哪个模型；已有本次明确选择或涵盖开聊和选型的长期预选时按其范围执行。整项任务迁往同一工作区的新对话。新对话确认已读取对应版本、核验交接并能指出下一步后，在询问归档前再次测量来源用量，并确认原对话没有剩余工作。压缩后已回落或仍有工作时保留原对话。普通旁支继续保留主对话；先交回证据，主任务和子任务均完成后，按[普通旁支整理规则](workflow.zh-CN.md)只考虑归档该子对话。模拟演练仅可在指定临时原对话内询问归档，真实业务对话保持活跃。只有用户明确同意才执行归档。如果宿主未提供创建对话或验证接手的能力，交付交接材料并说明尚缺哪一步。用户随时可给本次交接新的指示。
 
 `UserPromptSubmit` 和 `PostToolUse` 可把达标事件交给模型。在回合结束时首次发现达标，`Stop` 可要求模型继续一轮。若在 `PreCompact` 首次发现达标，脚本记录待处理事件，在下个可注入的节点交给模型；希望在压缩后的下一次模型调用前送达时，可额外注册下述 `SessionStart` 事件。 [Codex Hook 事件与输出](https://learn.chatgpt.com/docs/hooks#hooks)
+
+助手撰写的交接和归档询问跟随当前对话语言。Hook 独立显示的界面提示依次参考 `LC_ALL`、`LC_MESSAGES`、`LANGUAGE`、`LANG` 和系统区域设置，中文环境显示中文，其余环境显示英文。
 
 ## 为另一套本地 Codex 安装
 
@@ -64,6 +68,8 @@ python3 scripts/context_window.py --set <用户明确指定的正整数>
 ## Claude Code 的 80% 状态栏提示
 
 Claude Code 官方 `statusLine` 会把 JSON 传到配置命令的标准输入。`scripts/claude_context_status.py` 直接读取 `context_window.used_percentage`。达到 80% 时，状态栏持续显示交接提示，回落后自动隐藏。低于阈值时，脚本默认显示普通使用率，`--reminder-only` 则静默。字段缺失、为 `null` 或格式无效时均静默。这个适配器负责显示；在 Claude Code 看到提示时，可直接要求当前会话生成交接，并在接手会话中验证资料。 [Claude Code 状态栏](https://code.claude.com/docs/en/statusline#context-window-fields)
+
+状态栏可用 `--lang zh` 指定中文、`--lang en` 指定英文，默认的 `--lang auto` 跟随运行环境的语言设置。
 
 ### 独立状态栏
 
