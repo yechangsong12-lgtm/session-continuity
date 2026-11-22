@@ -7,6 +7,8 @@ description: Delegate bulk data cleanup and simple web searches to low-cost suba
 
 English · [简体中文](references/workflow.zh-CN.md)
 
+The checkpoint tools are adapted from [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). [MIT license and copyright notices](LICENSE).
+
 Use the user's requested language for summaries, alerts you write, takeover acknowledgements and the archive question. When the user has not specified a language, follow the conversation. Pass that choice along with the work. Keep IDs, paths, source quotes and numerical evidence intact. Use side-by-side translations when requested. 中文任务可直接使用上方的简体中文指南。
 
 ## Decide where the work belongs

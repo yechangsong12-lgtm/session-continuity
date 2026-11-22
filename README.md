@@ -24,6 +24,8 @@ The installation directory should contain `SKILL.md` directly. See [Codex skill 
 
 The default checkpoint location is `.agent/continuity/` inside the workspace. [Full workflow](skills/session-continuity/SKILL.md)
 
-## License
+## Origin and license
+
+This project extends the checkpoint, validation, bootstrap, and receipt tools in [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). This repository maintains the bilingual workflow, low-cost delegation guidance, context alerts, and model confirmation used for visible chat transfers. The upstream author published the underlying tools under the [MIT License](https://github.com/r-design-j/codex-session-continuity-skill/blob/4a5a597e25b07b89bc1594abfc83dd5183d6adea/LICENSE).
 
 [MIT](LICENSE)

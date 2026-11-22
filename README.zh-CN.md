@@ -24,6 +24,8 @@
 
 交接文件默认保存在项目的 `.agent/continuity/`。完整步骤见[中文技能说明](skills/session-continuity/references/workflow.zh-CN.md)。
 
-## 许可
+## 项目来源与许可
+
+本项目基于 [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill) 的存档、校验、接手续接和回执工具开发。本仓库维护中英文流程、低成本子代理分工、上下文提醒和开新对话时的模型确认。上游作者以 [MIT 许可证](https://github.com/r-design-j/codex-session-continuity-skill/blob/4a5a597e25b07b89bc1594abfc83dd5183d6adea/LICENSE) 发布了这些基础工具。
 
 项目使用 [MIT 许可证](LICENSE)。
