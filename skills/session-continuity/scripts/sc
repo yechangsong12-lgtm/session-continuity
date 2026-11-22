@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do
+  script_dir="$(cd -P -- "$(dirname -- "$script_path")" && pwd)"
+  script_path="$(readlink "$script_path")"
+  case "$script_path" in /*) ;; *) script_path="$script_dir/$script_path" ;; esac
+done
+SCRIPTS_DIR="$(cd -P -- "$(dirname -- "$script_path")" && pwd)"
+if [ ! -f "$SCRIPTS_DIR/checkpoint.py" ]; then
+  SCRIPTS_DIR="${CODEX_HOME:-"$HOME/.codex"}/skills/session-continuity/scripts"
+fi
+
+workspace_root() {
+  if [ -n "${SESSION_CONTINUITY_ROOT:-}" ]; then
+    printf '%s\n' "$SESSION_CONTINUITY_ROOT"
+    return
+  fi
+  git rev-parse --show-toplevel 2>/dev/null || pwd
+}
+
+usage() {
+  cat <<'EOF'
+Session Continuity shortcuts
+
+Usage:
+  sc save "latest request" ["active goal"] ["next task"]
+  sc target "target name" "target summary" ["next task"]
+  sc checkpoint [checkpoint.py options]
+  sc validate
+  sc bootstrap
+  sc bootstrap --output resume-bootstrap.md
+  sc handoff
+  sc status
+  sc context
+  sc maybe-rollover
+  sc rollover
+  sc receipt --created-thread-id THREAD_ID
+  sc test
+
+Aliases:
+  c, ck        checkpoint
+  s, save      quick checkpoint
+  target       targeted handoff under .agent/continuity/targets/
+  v, validate  validate current handoff
+  b, bootstrap print resume bootstrap
+  h, handoff   print handoff.md
+  context      evaluate context pressure without writing
+  guard        evaluate context pressure; supports all guard.py options
+  maybe-rollover
+              checkpoint and write rollover-request.json when thresholds require it
+  rollover     force checkpoint and write rollover-request.json
+  receipt      record a create_thread/fork_thread receipt
+  t, test      run self_test.py
+
+Root selection:
+  Defaults to git root when available, otherwise current directory.
+  Override with SESSION_CONTINUITY_ROOT=/path/to/workspace.
+  Long-form script options still accept --root.
+EOF
+}
+
+root="$(workspace_root)"
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help)
+    usage
+    ;;
+  save|s)
+    latest="${1:-}"
+    goal="${2:-$latest}"
+    task="${3:-}"
+    if [ -z "$latest" ]; then
+      printf 'Usage: sc save "latest request" ["active goal"] ["next task"]\n' >&2
+      exit 2
+    fi
+    args=(
+      --root "$root"
+      --workstream "$(basename "$root")"
+      --latest-user-request "$latest"
+      --active-goal "$goal"
+      --decision "$latest"
+    )
+    if [ -n "$task" ]; then
+      args+=(--open-task "$task")
+    fi
+    exec python3 -B "$SCRIPTS_DIR/checkpoint.py" "${args[@]}"
+    ;;
+  target)
+    target_name="${1:-}"
+    summary="${2:-}"
+    task="${3:-}"
+    if [ -z "$target_name" ] || [ -z "$summary" ]; then
+      printf 'Usage: sc target "target name" "target summary" ["next task"]\n' >&2
+      exit 2
+    fi
+    args=(
+      --root "$root"
+      --target "$target_name"
+      --workstream "$(basename "$root"):$target_name"
+      --latest-user-request "Targeted handoff: $target_name"
+      --active-goal "$summary"
+      --decision "$summary"
+    )
+    if [ -n "$task" ]; then
+      args+=(--open-task "$task")
+    fi
+    exec python3 -B "$SCRIPTS_DIR/checkpoint.py" "${args[@]}"
+    ;;
+  checkpoint|ck|c)
+    exec python3 -B "$SCRIPTS_DIR/checkpoint.py" --root "$root" "$@"
+    ;;
+  validate|v)
+    exec python3 -B "$SCRIPTS_DIR/validate.py" --root "$root" "$@"
+    ;;
+  bootstrap|b|resume)
+    exec python3 -B "$SCRIPTS_DIR/bootstrap.py" --root "$root" "$@"
+    ;;
+  status)
+    python3 -B "$SCRIPTS_DIR/validate.py" --root "$root" "$@"
+    target=""
+    if [ "${1:-}" = "--target" ] && [ -n "${2:-}" ]; then
+      target="$2"
+    fi
+    if [ -n "$target" ]; then
+      safe_target="$(printf '%s' "$target" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^[-._]+//; s/[-._]+$//')"
+      handoff="$root/.agent/continuity/targets/$safe_target/handoff.md"
+    else
+      handoff="$root/.agent/continuity/handoff.md"
+    fi
+    if [ -f "$handoff" ]; then
+      printf '\nHandoff: %s\n' "$handoff"
+    fi
+    ;;
+  handoff|h)
+    target=""
+    if [ "${1:-}" = "--target" ] && [ -n "${2:-}" ]; then
+      target="$2"
+    fi
+    if [ -n "$target" ]; then
+      safe_target="$(printf '%s' "$target" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^[-._]+//; s/[-._]+$//')"
+      handoff="$root/.agent/continuity/targets/$safe_target/handoff.md"
+    else
+      handoff="$root/.agent/continuity/handoff.md"
+    fi
+    if [ ! -f "$handoff" ]; then
+      printf 'Missing handoff: %s\n' "$handoff" >&2
+      exit 1
+    fi
+    exec sed -n '1,220p' "$handoff"
+    ;;
+  test|t|self-test)
+    exec python3 -B "$SCRIPTS_DIR/self_test.py"
+    ;;
+  redact|r)
+    exec python3 -B "$SCRIPTS_DIR/redact.py" "$@"
+    ;;
+  context)
+    exec python3 -B "$SCRIPTS_DIR/guard.py" --root "$root" "$@"
+    ;;
+  guard)
+    exec python3 -B "$SCRIPTS_DIR/guard.py" --root "$root" "$@"
+    ;;
+  maybe-rollover|maybe)
+    exec python3 -B "$SCRIPTS_DIR/guard.py" --root "$root" --checkpoint "$@"
+    ;;
+  rollover)
+    exec python3 -B "$SCRIPTS_DIR/guard.py" --root "$root" --checkpoint --force-rollover --write-request "$@"
+    ;;
+  receipt|thread-receipt)
+    exec python3 -B "$SCRIPTS_DIR/thread_receipt.py" --root "$root" "$@"
+    ;;
+  *)
+    printf 'Unknown session-continuity command: %s\n\n' "$cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
