@@ -183,12 +183,16 @@ def acquire_lock(cdir: Path, force: bool = False) -> Path:
             if owner_pid > 0:
                 probe_writer(owner_pid)
                 owner_alive = True
-        except (OSError, ValueError, json.JSONDecodeError):
+        except ValueError:
+            # The O_EXCL winner may still be writing its PID.
+            if not force and age < 900:
+                raise SystemExit(f"Active writer lock exists: {lock}")
             owner_alive = False
-        if not force and owner_alive and age < 900:
+        except OSError:
+            owner_alive = False
+        if not force and owner_alive:
             raise SystemExit(f"Active writer lock exists: {lock}")
-        if force or age >= 900 or not owner_alive:
-            lock.unlink()
+        lock.unlink()
     fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(json.dumps({"pid": os.getpid(), "created_at": utc_now()}, indent=2))
@@ -825,8 +829,27 @@ def write_rollover_request(
         "prompt": prompt,
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
     }
-    write_text(cdir / ROLLOVER_REQUEST, json.dumps(request, indent=2, ensure_ascii=False) + "\n")
-    request["request_sha256"] = sha256_file(cdir / ROLLOVER_REQUEST)
+    request_path = cdir / ROLLOVER_REQUEST
+    receipt_path = cdir / THREAD_RECEIPT
+    if ok and receipt_path.exists():
+        receipt = json.loads(read_text(receipt_path))
+        if (receipt.get("continuity_revision") == state["revision"]
+                and receipt.get("status") in {"pending_worktree", "created"}):
+            # A destination already exists or is being created under the original approval.
+            bound_hash = receipt.get("rollover_request_sha256")
+            if bound_hash and request_path.exists() and sha256_file(request_path) == bound_hash:
+                saved = json.loads(read_text(request_path))
+                identity = ("source_thread_id", "approved_model", "prompt_sha256", "thread_action")
+                if all(saved.get(key) == request[key] for key in identity):
+                    return {**saved, "request_sha256": bound_hash}
+            request["status"] = "blocked"
+            request["thread_action"] = "reuse_existing_receipt"
+            request["validation"] = {**request["validation"], "ok": False, "errors": [
+                "this checkpoint already has a destination bound to a different or unverifiable request"
+            ]}
+            return request
+    write_text(request_path, json.dumps(request, indent=2, ensure_ascii=False) + "\n")
+    request["request_sha256"] = sha256_file(request_path)
     return request
 
 
@@ -889,6 +912,24 @@ def command_guard(args: argparse.Namespace) -> int:
 def command_thread_receipt(args: argparse.Namespace) -> int:
     root = Path(args.root).expanduser().resolve()
     cdir = continuity_dir(root, args.target)
+    if not cdir.is_dir():
+        print(json.dumps({"ok": False, "error": "missing checkpoint directory"}), file=sys.stderr)
+        return 1
+    try:
+        lock = acquire_lock(cdir)
+    except (FileExistsError, SystemExit) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 1
+    try:
+        return write_thread_receipt(args, root, cdir)
+    except (OSError, ValueError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 1
+    finally:
+        release_lock(lock)
+
+
+def write_thread_receipt(args: argparse.Namespace, root: Path, cdir: Path) -> int:
     request_path = cdir / ROLLOVER_REQUEST
     request: dict[str, Any] | None = None
     request_sha = ""
@@ -896,6 +937,8 @@ def command_thread_receipt(args: argparse.Namespace) -> int:
         request_sha = sha256_file(request_path)
         try:
             request = json.loads(read_text(request_path))
+            if not isinstance(request, dict):
+                raise ValueError("invalid rollover request")
         except json.JSONDecodeError as exc:
             print(json.dumps({"ok": False, "error": f"invalid rollover request: {exc}"}, indent=2), file=sys.stderr)
             return 1
@@ -931,12 +974,18 @@ def command_thread_receipt(args: argparse.Namespace) -> int:
         if request_errors:
             print(json.dumps({"ok": False, "errors": request_errors}, indent=2, ensure_ascii=False), file=sys.stderr)
             return 1
+    request_source = (request or {}).get("source_thread_id", "")
+    if args.source_thread_id and request_source and args.source_thread_id != request_source:
+        raise ValueError("receipt source chat differs from the prepared request")
+    source = request_source or args.source_thread_id or os.environ.get("CODEX_THREAD_ID", "")
+    if source and source in (args.created_thread_id, args.pending_worktree_id):
+        raise ValueError("the destination must differ from the source chat")
     receipt = {
         "schema": THREAD_RECEIPT_SCHEMA,
         "recorded_at": utc_now(),
         "workspace_root": str(root),
         "target": slugify(args.target) if args.target else "",
-        "source_thread_id": args.source_thread_id or (request or {}).get("source_thread_id", "") or os.environ.get("CODEX_THREAD_ID", ""),
+        "source_thread_id": source,
         "created_thread_id": args.created_thread_id,
         "pending_worktree_id": args.pending_worktree_id,
         "thread_url": args.thread_url,
@@ -952,7 +1001,37 @@ def command_thread_receipt(args: argparse.Namespace) -> int:
         "rollover_request_status": (request or {}).get("status", ""),
         "notes": args.note,
     }
-    write_text(cdir / THREAD_RECEIPT, json.dumps(receipt, indent=2, ensure_ascii=False) + "\n")
+    receipt_path = cdir / THREAD_RECEIPT
+    previous = json.loads(read_text(receipt_path)) if receipt_path.exists() else {}
+    if not isinstance(previous, dict):
+        raise ValueError("invalid saved thread receipt")
+    if previous and previous.get("continuity_revision") == receipt["continuity_revision"]:
+        # Re-preparing a request for the same checkpoint is not a second destination.
+        for field in ("source_thread_id", "created_thread_id", "pending_worktree_id", "bootstrap_sha256"):
+            old_value, new_value = previous.get(field), receipt[field]
+            if old_value and new_value and old_value != new_value:
+                raise ValueError(f"conflicting receipt field for this checkpoint: {field}")
+        if previous.get("created_thread_id") and not args.created_thread_id:
+            raise ValueError("a created destination is already recorded")
+        if previous.get("pending_worktree_id") and status == "manual_required":
+            raise ValueError("a pending destination is already recorded")
+        for field in ("pending_worktree_id", "source_thread_id", "thread_url", "notes"):
+            receipt[field] = receipt[field] or previous.get(field, "")
+        if previous.get("status") in {"pending_worktree", "created"}:
+            if args.target_type == "projectless" and previous.get("target_type"):
+                receipt["target_type"] = previous["target_type"]
+            if args.tool == "create_thread" and previous.get("tool"):
+                receipt["tool"] = previous["tool"]
+        if previous.get("status") == status:
+            receipt["recorded_at"] = previous.get("recorded_at", receipt["recorded_at"])
+        prior_hash = previous.get("rollover_request_sha256")
+        if previous.get("status") in {"created", "pending_worktree"} and prior_hash and prior_hash != request_sha:
+            if previous.get("status") != status:
+                raise ValueError("cannot promote a receipt using a different request")
+            # Older versions could replace the request file after creation. Keep the original evidence.
+            receipt = previous
+    if previous != receipt:
+        write_text(receipt_path, json.dumps(receipt, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"ok": True, "receipt": str(cdir / THREAD_RECEIPT), "status": receipt["status"]}, indent=2, ensure_ascii=False))
     return 0
 
@@ -1100,6 +1179,9 @@ def command_validate(args: argparse.Namespace) -> int:
 
 def command_bootstrap(args: argparse.Namespace) -> int:
     source_id = args.thread_id or os.environ.get("CODEX_THREAD_ID", "")
+    if args.expected_source_model is not None and (not args.inherit_source_model or not args.expected_source_model.strip()):
+        print("--expected-source-model requires an observed model ID and --inherit-source-model.", file=sys.stderr)
+        return 2
     if args.show_source_model:
         if args.inherit_source_model or args.approved_model or args.output:
             print("--show-source-model is read-only and cannot prepare or write a request.", file=sys.stderr)
@@ -1137,6 +1219,10 @@ def command_bootstrap(args: argparse.Namespace) -> int:
                     return 1
                 if metrics["at_or_above_80"] is not True:
                     print(json.dumps({"ok": False, "error": "No current source sample at or above 80%. Keep the source chat.", **metrics}), file=sys.stderr)
+                    return 1
+                if args.expected_source_model is not None and metrics["source_model"] != args.expected_source_model.strip():
+                    print(json.dumps({"ok": False, "error": "Source model changed after confirmation. Ask again before opening a chat.",
+                                      "expected_source_model": args.expected_source_model, **metrics}), file=sys.stderr)
                     return 1
                 source_id = metrics["source_thread_id"]
                 trigger = {"reason": "confirmed_high_context_handoff", "model_selection": "user_override" if model else "source"}
@@ -1213,6 +1299,7 @@ def configure_bootstrap_parser(parser: argparse.ArgumentParser) -> None:
     mode.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
     mode.add_argument("--show-source-model", action="store_true", help="Inspect the source chat's actual model and latest usage. No checkpoint needed.")
     parser.add_argument("--inherit-source-model", action="store_true", help="After approval of an 80 percent full transfer, recheck usage and use the source model. Pair with --approved-model for a user-selected override.")
+    parser.add_argument("--expected-source-model", help="Model shown when asking for consent. Abort preparation if the source has switched.")
     parser.add_argument("--approved-model", default="", help="Model ID selected for this new chat, including a concrete choice under an explicit delegation.")
     parser.add_argument("--thread-id", default="", help="Source thread for --prepare-thread. Defaults to CODEX_THREAD_ID.")
     parser.set_defaults(func=command_bootstrap)

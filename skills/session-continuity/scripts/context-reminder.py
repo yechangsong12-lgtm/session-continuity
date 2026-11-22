@@ -28,7 +28,7 @@ CHECKPOINT_INSTRUCTION = (
     "source active, merge the results, and consider archiving the side chat only once the parent task is complete "
     "or under the user's explicit cleanup instructions. Archive a chat only within the user's consent."
 )
-TAIL_SIZES = (128 * 1024, 2 * 1024 * 1024, 16 * 1024 * 1024)
+READ_BLOCK = 128 * 1024
 RESET_RECORD = re.compile(
     rb'^\{\s*(?:"timestamp"\s*:\s*"[^"]*"\s*,\s*)?"type"\s*:\s*"compacted"'
 )
@@ -69,24 +69,61 @@ def parse_sample(line: bytes, offset: int) -> Sample | None:
     return None
 
 
+def reverse_records(transcript):
+    """Yield offsets and lengths without buffering a whole tool output."""
+    stop = end = transcript.seek(0, os.SEEK_END)
+    while stop:
+        start = max(0, stop - READ_BLOCK)
+        transcript.seek(start)
+        block = transcript.read(stop - start)
+        pos = len(block)
+        while (pos := block.rfind(b"\n", 0, pos)) >= 0:
+            offset = start + pos + 1
+            if offset < end:
+                yield offset, end - offset
+            end = offset - 1
+        stop = start
+    if end > 0:
+        yield 0, end
+
+
 def recent_sample(path: Path) -> Sample | None:
+    later_model = None
+    candidate = None
     with path.open("rb") as transcript:
-        size = transcript.seek(0, os.SEEK_END)
-        for tail_size in TAIL_SIZES:
-            start = max(0, size - tail_size)
-            transcript.seek(start)
-            data = transcript.read(size - start)
-            first_line, *other_lines = data.split(b"\n")
-            lines = other_lines if start else [first_line, *other_lines]
-            end = size
-            for line in reversed(lines):
-                offset = end - len(line)
-                end = offset - 1
-                sample = parse_sample(line, offset)
-                if sample:
-                    return sample
-            if start == 0:
-                break
+        for offset, length in reverse_records(transcript):
+            transcript.seek(offset)
+            header = transcript.read(min(length, 256))
+            if b'"turn_context"' in header:
+                transcript.seek(offset)
+                try:
+                    record = json.loads(transcript.read(length))
+                except ValueError:
+                    return None
+                if record.get("type") == "turn_context":
+                    turn = record.get("payload") or {}
+                    model = turn.get("model")
+                    if not isinstance(model, str) or not model.strip():
+                        return None
+                    model = model.strip()
+                    if later_model is not None and later_model != model:
+                        return None
+                    if candidate is not None:
+                        return candidate
+                    if turn.get("compacted") or turn.get("context_compacted"):
+                        return None
+                    later_model = model
+                    continue
+            if candidate is not None:
+                continue
+            if not RESET_RECORD.match(header) and not (
+                b'"event_msg"' in header and (b'"token_count"' in header or b'"context_compacted"' in header)
+            ):
+                continue
+            transcript.seek(offset)
+            candidate = parse_sample(transcript.read(length), offset)
+            if candidate is not None and later_model is None:
+                return candidate
     return None
 
 
@@ -202,9 +239,8 @@ def reminder(payload: dict, codex_home: Path) -> dict | None:
     if not high:
         # A prior crossing (including a valid pre-compaction marker) cannot trigger a later prompt.
         pending.unlink(missing_ok=True)
-        if sample is not None:
-            marker.unlink(missing_ok=True)
-            delivered.unlink(missing_ok=True)
+        marker.unlink(missing_ok=True)
+        delivered.unlink(missing_ok=True)
         return None
     if is_subagent_transcript(transcript):
         return None

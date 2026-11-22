@@ -49,7 +49,7 @@ For tri-party workstreams, `review_status: passed` requires:
 - Artifact metadata includes the expected `party` and `stage` labels.
 - When `state.json` records artifact SHA256 values, those values match the current files on disk.
 
-Validation also blocks resume when `.agent/continuity/locks/writer.lock` is fresh and not owned by the current process.
+Validation blocks resume while another live process owns `.agent/continuity/locks/writer.lock`. A fresh lock with incomplete owner information is also treated as active.
 
 ## Context Guard Output
 

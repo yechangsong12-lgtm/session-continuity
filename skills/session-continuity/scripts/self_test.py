@@ -72,7 +72,7 @@ def test_confirmed_source_model(root: Path) -> None:
         inspect(*prepare, expect_ok=False)
         assert not request.exists()
         measure(source, 8000)
-        inspect(*prepare)
+        inspect(*prepare, "--expected-source-model", preview["source_model"])
         data = json.loads(request.read_text(encoding="utf-8"))
         assert data["approved_model"] == "first-model" and data["metrics"]["used_tokens"] == 8000
         request.unlink()
@@ -82,7 +82,10 @@ def test_confirmed_source_model(root: Path) -> None:
         inspect(*prepare, expect_ok=False)  # Do not recycle the previous model's high sample.
         assert not request.exists()
         measure(source, 8400)
-        inspect(*prepare)
+        for override in ([], ["--approved-model", "user-pick"]):
+            rejected = inspect(*prepare, "--expected-source-model", preview["source_model"], *override, expect_ok=False)
+            assert json.loads(rejected.stderr)["source_model"] == "switched-model" and not request.exists()
+        inspect(*prepare, "--expected-source-model", "switched-model")
         assert json.loads(request.read_text(encoding="utf-8"))["approved_model"] == "switched-model"
         inspect(*prepare, "--approved-model", "user-pick")
         data = json.loads(request.read_text(encoding="utf-8"))

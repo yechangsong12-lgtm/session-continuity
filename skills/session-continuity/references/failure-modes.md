@@ -6,7 +6,7 @@ Hard-stop failures:
 - `redaction_status: failed`: likely secret material is present.
 - Missing `current.yml` or invalid JSON-compatible YAML.
 - Missing `manifest.json`.
-- Active `locks/writer.lock` younger than 15 minutes.
+- A live process owns `locks/writer.lock`, or a newly created lock is still waiting for its owner information.
 - A tri-party workstream claims complete review without Claude and Gemini evidence files.
 - Tri-party evidence files are empty, lack completion markers, or lack `true_triparty_ready` / merge-gate readiness.
 - Tri-party artifact metadata does not match the expected party/stage.

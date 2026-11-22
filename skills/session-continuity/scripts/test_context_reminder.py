@@ -116,6 +116,41 @@ class ContextHookTests(unittest.TestCase):
         self.assertFalse(self.pending.exists())
         self.assertIsNone(self.fire("Stop"))
 
+    def test_model_switch_waits_for_a_new_sample(self):
+        self.enable()
+        self.record("turn_context", {"model": "first"})
+        self.sample(8100)
+        self.record("turn_context", {"model": "second"})
+        self.assertIsNone(self.fire("Stop"))
+        self.sample(8350)
+        self.assertIn("8350/10000", self.fire("Stop")["reason"])
+        self.record("turn_context", {"model": "third"})
+        self.assertIsNone(self.fire("Stop"))
+        self.sample(8500)
+        self.assertIn("8500/10000", self.fire("Stop")["reason"])
+
+    def test_same_model_preserves_sample_but_compacted_turn_clears_it(self):
+        self.enable()
+        self.record("turn_context", {"model": "first"})
+        self.sample(8400)
+        self.record("turn_context", {"model": "first"})
+        self.assertIn("8400/10000", self.fire("Stop")["reason"])
+        self.record("turn_context", {"model": "first", "context_compacted": True})
+        self.assertIsNone(self.fire("Stop"))
+        self.sample(9000)
+        self.assertIn("9000/10000", self.fire("Stop")["reason"])
+
+    def test_large_unrelated_output_preserves_sample_and_offset(self):
+        self.enable()
+        self.sample(8300)
+        self.record("response_item", {"type": "function_call_output", "output": "a" * (17 * 1024 * 1024)})
+        self.assertIn("8300/10000", self.fire("Stop")["reason"])
+        snapshot = json.loads(self.pending.with_suffix(".handoff").read_text(encoding="ascii"))
+        with self.log.open("rb") as transcript:
+            transcript.seek(snapshot["offset"])
+            event = json.loads(transcript.readline())
+        self.assertEqual(event["payload"]["type"], "token_count")
+
     def test_current_high_checkpoint_preserves_permission_and_model_choice(self):
         self.settings.write_text('{"auto_checkpoint_at_80": true}', encoding="ascii")
         self.sample(8050)
