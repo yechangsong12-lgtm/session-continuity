@@ -132,6 +132,8 @@ class ContextHookTests(unittest.TestCase):
         self.assertIn(delivered["observed_utc"], context)
         self.assertIn("save and validate a checkpoint in this chat", context)
         self.assertIn("which model", context)
+        self.assertIn("read the active model from the source chat", context)
+        self.assertIn("Wait for consent", context)
         self.assertIn("'continue' or '继续'", context)
         self.assertNotIn("ask whether to archive the source", context)
         self.assertIsNone(self.fire("PostToolUse"))

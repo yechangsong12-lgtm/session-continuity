@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
+from uuid import uuid4
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -31,9 +33,82 @@ def run(args: list[str], *, input_text: str | None = None, expect_ok: bool = Tru
     return proc
 
 
+def test_confirmed_source_model(root: Path) -> None:
+    fake_home = root / "isolated-codex"
+    sessions = fake_home / "sessions" / "2026" / "11"
+    sessions.mkdir(parents=True)
+    source = str(uuid4())
+    other = str(uuid4())
+    workspace = root / "model-work"
+    workspace.mkdir()
+
+    def append(chat: str, kind: str, payload: dict) -> None:
+        with (sessions / f"rollout-test-{chat}.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"type": kind, "payload": payload}) + "\n")
+
+    def measure(chat: str, used: int) -> None:
+        append(chat, "event_msg", {"type": "token_count", "info": {
+            "last_token_usage": {"total_tokens": used}, "model_context_window": 10000,
+            "total_token_usage": {"total_tokens": 9999999},
+        }})
+
+    def inspect(*options: str, expect_ok: bool = True):
+        return run([str(SCRIPT_DIR / "bootstrap.py"), "--root", str(workspace), *options], expect_ok=expect_ok)
+
+    with patch.dict(os.environ, {"CODEX_HOME": str(fake_home), "CODEX_THREAD_ID": source}):
+        append(source, "session_meta", {"id": source})
+        append(source, "turn_context", {"model": "first-model"})
+        measure(source, 7999)
+        append(other, "session_meta", {"id": other})
+        append(other, "turn_context", {"model": "unrelated-model"})
+        measure(other, 9999)
+        preview = json.loads(inspect("--show-source-model", "--thread-id", source).stdout)
+        assert preview["source_model"] == "first-model" and preview["at_or_above_80"] is False
+        assert not (workspace / ".agent").exists()
+
+        run([str(SCRIPT_DIR / "checkpoint.py"), "--root", str(workspace), "--latest-user-request", "Check a source model"])
+        request = workspace / ".agent" / "continuity" / "rollover-request.json"
+        prepare = ["--prepare-thread", "--inherit-source-model", "--thread-id", source]
+        inspect(*prepare, expect_ok=False)
+        assert not request.exists()
+        measure(source, 8000)
+        inspect(*prepare)
+        data = json.loads(request.read_text(encoding="utf-8"))
+        assert data["approved_model"] == "first-model" and data["metrics"]["used_tokens"] == 8000
+        request.unlink()
+
+        append(source, "turn_context", {"model": "switched-model"})
+        assert json.loads(inspect("--show-source-model").stdout)["source_model"] == "switched-model"
+        inspect(*prepare, expect_ok=False)  # Do not recycle the previous model's high sample.
+        assert not request.exists()
+        measure(source, 8400)
+        inspect(*prepare)
+        assert json.loads(request.read_text(encoding="utf-8"))["approved_model"] == "switched-model"
+        inspect(*prepare, "--approved-model", "user-pick")
+        data = json.loads(request.read_text(encoding="utf-8"))
+        assert data["approved_model"] == "user-pick" and data["trigger"]["model_selection"] == "user_override"
+        request.unlink()
+        append(source, "compacted", {"message": "test"})
+        inspect(*prepare, "--approved-model", "user-pick", expect_ok=False)
+        measure(source, 1200)
+        inspect(*prepare, expect_ok=False)
+        append(source, "turn_context", {})
+        measure(source, 9999)
+        inspect("--show-source-model", expect_ok=False)
+        inspect(*prepare, expect_ok=False)
+
+        missing = str(uuid4())
+        inspect("--show-source-model", "--thread-id", missing, expect_ok=False)
+        append(missing, "session_meta", {"id": other})
+        append(missing, "turn_context", {"model": "wrong-owner"})
+        inspect("--show-source-model", "--thread-id", missing, expect_ok=False)
+        assert not request.exists()
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="session-continuity $-O'Brien-") as tmp:
         root = Path(tmp)
+        test_confirmed_source_model(root)
         checkpoint = run(
             [
                 str(SCRIPT_DIR / "checkpoint.py"),
@@ -467,7 +542,7 @@ def main() -> int:
             assert relative_state["gates"]["review_status"] == "partial"
         finally:
             os.chdir(cwd)
-    print(json.dumps({"ok": True, "tested": ["checkpoint", "validate", "bootstrap", "targeted-handoff", "context-guard", "compaction-false-positive", "explicit-compaction", "rollover-request", "thread-receipt", "receipt-requires-request", "receipt-rejects-stale-request", "redact", "tamper", "active-lock", "credential-url", "triparty-gate", "relative-triparty"]}, indent=2))
+    print(json.dumps({"ok": True, "tested": ["source-model-and-high-context-transfer", "checkpoint", "validate", "bootstrap", "targeted-handoff", "context-guard", "compaction-false-positive", "explicit-compaction", "rollover-request", "thread-receipt", "receipt-requires-request", "receipt-rejects-stale-request", "redact", "tamper", "active-lock", "credential-url", "triparty-gate", "relative-triparty"]}, indent=2))
     return 0
 
 

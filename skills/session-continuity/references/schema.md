@@ -96,6 +96,8 @@ Required fields:
 | `metrics` | object | Session-log metrics used by the guard. |
 | `checkpoint` | object | Checkpoint command result. |
 
+For a confirmed 80% transfer, compare the saved model with the model named in the confirmation, and pass that exact ID to the chat creation tool.
+
 If `status` is not `ready`, no new thread should be created from the request.
 
 ## Thread Receipt

@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ import textwrap
 import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 
 SCHEMA = "codex-session-continuity/v1"
@@ -538,16 +540,64 @@ def validate_package_at(root: Path, target: str = "") -> tuple[bool, list[str], 
 
 
 def find_current_session_log(thread_id: str) -> Path | None:
-    if not thread_id:
+    if not re.fullmatch(r"[\w-]+", thread_id):
         return None
     candidates: list[Path] = []
-    for base in [Path.home() / ".codex" / "sessions", Path.home() / ".codex" / "archived_sessions"]:
+    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    for base in [codex_home / "sessions", codex_home / "archived_sessions"]:
         if base.exists():
-            candidates.extend(base.rglob(f"rollout-*{thread_id}.jsonl"))
+            candidates.extend(base.rglob(f"rollout-*-{thread_id}.jsonl"))
     if not candidates:
         return None
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return candidates[0]
+
+
+def source_chat_snapshot(thread_id: str) -> dict[str, Any]:
+    """Read the latest model and its most recent context sample from one identified chat."""
+    try:
+        thread_id = str(UUID(thread_id))
+    except ValueError:
+        raise ValueError("A valid source chat UUID is required.") from None
+    path = find_current_session_log(thread_id)
+    if path is None:
+        raise ValueError("Source chat rollout was not found.")
+    # Use the installed threshold hook's handling of token_count and compaction markers.
+    parse_sample = runpy.run_path(str(Path(__file__).with_name("context-reminder.py")))["parse_sample"]
+    model = ""
+    sample = None
+    with path.open("rb") as stream:
+        header = json.loads(stream.readline())
+        if header.get("type") != "session_meta" or (header.get("payload") or {}).get("id") != thread_id:
+            raise ValueError("The rollout metadata does not identify the requested source chat.")
+        for line in stream:
+            prefix = line[:256]
+            if b'"turn_context"' in prefix:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    model, sample = "", None
+                    continue
+                if record.get("type") == "turn_context":
+                    payload = record.get("payload") or {}
+                    next_model = payload.get("model")
+                    next_model = next_model.strip() if isinstance(next_model, str) else ""
+                    if next_model != model or payload.get("compacted") or payload.get("context_compacted"):
+                        sample = None
+                    model = next_model
+                    continue
+            point = parse_sample(line, stream.tell() - len(line))
+            if point is not None:
+                sample = point
+    if not model:
+        raise ValueError("The latest source turn has no observed model. Keep the source chat.")
+    return {
+        "source_thread_id": thread_id,
+        "source_model": model,
+        "used_tokens": sample.used if sample else None,
+        "context_window": sample.window if sample else None,
+        "at_or_above_80": sample.high if sample else None,
+    }
 
 
 def parse_session_metrics(session_log: Path, *, large_output_chars: int) -> dict[str, Any]:
@@ -1049,21 +1099,50 @@ def command_validate(args: argparse.Namespace) -> int:
 
 
 def command_bootstrap(args: argparse.Namespace) -> int:
+    source_id = args.thread_id or os.environ.get("CODEX_THREAD_ID", "")
+    if args.show_source_model:
+        if args.inherit_source_model or args.approved_model or args.output:
+            print("--show-source-model is read-only and cannot prepare or write a request.", file=sys.stderr)
+            return 2
+        try:
+            snapshot = source_chat_snapshot(source_id)
+        except (OSError, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+        print(json.dumps({"ok": True, **snapshot}, ensure_ascii=False))
+        return 0
+    if (args.inherit_source_model or args.approved_model) and not args.prepare_thread:
+        print("Model selection requires --prepare-thread after user approval.", file=sys.stderr)
+        return 2
     root = Path(args.root).expanduser().resolve()
     ok, errors, state = validate_package_at(root, args.target)
     if not ok or state is None:
         print(json.dumps({"ok": False, "errors": errors}, indent=2, ensure_ascii=False), file=sys.stderr)
         return 1
     if args.prepare_thread:
-        if not args.approved_model.strip():
+        model = args.approved_model.strip()
+        if not (model or args.inherit_source_model):
             print("Confirm creation and model choice first. Pass --approved-model MODEL after approval.", file=sys.stderr)
             return 2
         cdir = continuity_dir(root, args.target)
         lock = acquire_lock(cdir)
         try:
+            trigger = {"reason": "requested_handoff"}
+            metrics = {}
+            if args.inherit_source_model:
+                try:
+                    metrics = source_chat_snapshot(source_id)
+                except (OSError, ValueError) as exc:
+                    print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+                    return 1
+                if metrics["at_or_above_80"] is not True:
+                    print(json.dumps({"ok": False, "error": "No current source sample at or above 80%. Keep the source chat.", **metrics}), file=sys.stderr)
+                    return 1
+                source_id = metrics["source_thread_id"]
+                trigger = {"reason": "confirmed_high_context_handoff", "model_selection": "user_override" if model else "source"}
+                model = model or metrics["source_model"]
             request = write_rollover_request(
-                root, args.target, args.thread_id or os.environ.get("CODEX_THREAD_ID", ""),
-                {"reason": "requested_handoff"}, {}, {"ok": True}, args.approved_model.strip(),
+                root, args.target, source_id, trigger, metrics, {"ok": True}, model,
             )
         finally:
             release_lock(lock)
@@ -1130,7 +1209,10 @@ def configure_validate_parser(parser: argparse.ArgumentParser) -> None:
 def configure_bootstrap_parser(parser: argparse.ArgumentParser) -> None:
     add_common_root(parser)
     parser.add_argument("--output", default="")
-    parser.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
+    mode.add_argument("--show-source-model", action="store_true", help="Inspect the source chat's actual model and latest usage. No checkpoint needed.")
+    parser.add_argument("--inherit-source-model", action="store_true", help="After approval of an 80 percent full transfer, recheck usage and use the source model. Pair with --approved-model for a user-selected override.")
     parser.add_argument("--approved-model", default="", help="Model ID selected for this new chat, including a concrete choice under an explicit delegation.")
     parser.add_argument("--thread-id", default="", help="Source thread for --prepare-thread. Defaults to CODEX_THREAD_ID.")
     parser.set_defaults(func=command_bootstrap)
