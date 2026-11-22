@@ -16,15 +16,23 @@ python3 scripts/context_window.py --set <用户明确指定的正整数>
 
 `model_context_window` 配置窗口，`model_auto_compact_token_limit` 配置常规自动压缩的 token 阈值，后者未设置时使用模型默认值。`model_post_turn_compact_threshold_percent` 可在最终回复后按可用窗口的百分比触发压缩，省略或为 `0` 时关闭这一回合结束触发方式。80% 提醒由下方 hook 独立判断。 [Codex 配置参考](https://learn.chatgpt.com/docs/config-file/config-reference) · [模型与窗口](https://learn.chatgpt.com/docs/models) · [桌面斜杠命令](https://learn.chatgpt.com/docs/reference/slash-commands) · [CLI 命令](https://learn.chatgpt.com/docs/developer-commands?surface=cli#inspect-the-session-with-status)
 
-## 80% 提醒的采样
+## 达到 80% 后的处理
 
-`scripts/context-reminder.py` 是可安装的 Codex 命令 hook。它校验当前聊天的本地日志路径和会话 ID，使用最近一条可用样本的 `info.last_token_usage.total_tokens / info.model_context_window`。这是最近一次模型请求的用量比例，桌面显示可能采用不同的估算。持续达到或超过 80% 时，每个聊天只提示一次。观察到低于阈值的样本或压缩记录后，会清除该聊天的去重状态。只有在 hook 事件触发且已有可用样本时才会检查。
+`scripts/context-reminder.py` 是可安装的 Codex 命令 hook。它在收到事件时核对主对话的会话 ID 和日志位置，以最近一条可用样本的 `info.last_token_usage.total_tokens / info.model_context_window` 计算用量。桌面百分比可能采用不同的估算。同一次超过阈值只触发一次。
 
-提醒以界面提示显示。后续工作照常进行。用户明确要求交接时，再按本技能的交接流程执行。
+默认在界面提醒。希望达到阈值后直接交接的用户，可在本机 `$CODEX_HOME/hooks/session-continuity.json` 设置以下字段。该文件属于用户个人配置。改为 `false` 可恢复普通提醒。
+
+```json
+{"auto_handoff_at_80": true}
+```
+
+启用后，由主对话生成并校验交接资料，将启动提示交给同一工作区的新对话。新对话确认已读取对应版本、核验交接并能指出下一步后，才询问用户是否归档旧对话。只有用户明确同意才执行归档。如果宿主未提供创建对话或验证接手的能力，交付交接材料并说明尚缺哪一步。用户随时可给本次交接新的指示。
+
+`UserPromptSubmit` 和 `PostToolUse` 可把达标事件交给模型。在回合结束时首次发现达标，`Stop` 可要求模型继续一轮。若在 `PreCompact` 首次发现达标，脚本记录待处理事件，在下个可注入的节点交给模型；希望在压缩后的下一次模型调用前送达时，可额外注册下述 `SessionStart` 事件。 [Codex Hook 事件与输出](https://learn.chatgpt.com/docs/hooks#hooks)
 
 ## 为另一套本地 Codex 安装
 
-已有同一提醒注册的环境可直接使用。其他环境可按以下步骤安装。
+已有同一脚本注册的环境可更新已注册位置的脚本，再核对本机偏好。首次安装可按以下步骤操作。
 
 1. 将技能内的 `scripts/context-reminder.py` 复制到该环境 Codex 用户目录下的 `hooks/context-reminder.py`。查看脚本正文，并确认解释器来自可信安装。推荐使用 Python 3.11 或以上的绝对路径，避免桌面应用的 PATH 与终端不同。macOS、Linux 可用 `command -v python3` 查找，Windows PowerShell 可用 `py -3 -c "import sys; print(sys.executable)"` 查找。
 2. 在该环境的 `$CODEX_HOME/hooks.json` 注册。未设置 `CODEX_HOME` 时，macOS、Linux 使用 `~/.codex/hooks.json`，Windows 使用 `%USERPROFILE%\.codex\hooks.json`。如果同一用户配置层已用 `config.toml` 的 `[hooks]`，沿用它和官方文档的 TOML 结构。若使用现有 `hooks.json`，把相应事件组追加到已有事件数组，保留其他事件、事件组和顶层字段。只在新文件中使用完整示例。相同脚本与事件只注册一次。
@@ -49,13 +57,13 @@ python3 scripts/context_window.py --set <用户明确指定的正整数>
 }
 ```
 
-4. 重新加载 Codex。在 CLI 输入 `/hooks`，或在桌面版打开设置中的 Hooks，也可在输入区选择 Review hooks。核对来源、事件和命令后，仅信任已审查的提醒。Hooks 默认开启。若主动关闭过且想恢复，可在现有 `[features]` 表设置 `hooks = true`，并遵守受管配置。 [Hooks 安装、信任与禁用](https://learn.chatgpt.com/docs/hooks)
+4. 如需更早处理压缩前保存的待交接事件，在 `hooks.SessionStart` 数组增加一个匹配组，设置 `"matcher": "^compact$"`，其中的 `hooks` 数组沿用上述同一脚本命令。重载 Codex 后在 CLI 输入 `/hooks`，或在桌面版的 Hooks 设置中检查状态。Codex 按 hook 定义的哈希记录信任；新增或变更定义后，如显示待审，请核对命令并信任该项。个人开关单独保存在上文指定的文件中。 [Hooks 安装与信任](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)
 
 可在终端将 `{}` 通过标准输入传给脚本，确认解释器能执行，预期为退出成功且无输出。缺少可用日志、格式已变、客户端不支持本地命令 hook 或策略限制时，可使用 `/status` 手动查看上下文。Codex 官方将本地日志格式视为可变实现。 [Hook 输入与输出](https://learn.chatgpt.com/docs/hooks#common-input-fields)
 
 ## Claude Code 的 80% 状态栏提示
 
-Claude Code 官方 `statusLine` 会把 JSON 传到配置命令的标准输入。`scripts/claude_context_status.py` 直接读取 `context_window.used_percentage`。达到 80% 时，状态栏持续显示交接提示，回落后自动隐藏。低于阈值时，脚本默认显示普通使用率，`--reminder-only` 则静默。字段缺失、为 `null` 或格式无效时均静默。这个提示随 Claude 的状态栏刷新显示，Codex 的一次性事件提示由上面的 hook 提供。 [Claude Code 状态栏](https://code.claude.com/docs/en/statusline#context-window-fields)
+Claude Code 官方 `statusLine` 会把 JSON 传到配置命令的标准输入。`scripts/claude_context_status.py` 直接读取 `context_window.used_percentage`。达到 80% 时，状态栏持续显示交接提示，回落后自动隐藏。低于阈值时，脚本默认显示普通使用率，`--reminder-only` 则静默。字段缺失、为 `null` 或格式无效时均静默。这个适配器负责显示；在 Claude Code 看到提示时，可直接要求当前会话生成交接，并在接手会话中验证资料。 [Claude Code 状态栏](https://code.claude.com/docs/en/statusline#context-window-fields)
 
 ### 独立状态栏
 

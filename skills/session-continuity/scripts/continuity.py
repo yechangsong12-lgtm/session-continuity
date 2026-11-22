@@ -419,9 +419,10 @@ def build_bootstrap(state: dict[str, Any]) -> str:
         command,
         "```",
         "",
-        f"2. Read `{state_dir}/handoff.md`, verify the evidence for the first open task against its current source, then continue.",
-        "3. If `review_status` is `partial`, label the restored work as partial.",
-        "4. If hash or redaction checks fail, stop and ask for user direction.",
+        "2. If validation fails or the revision differs from the revision above, report the problem here before proceeding.",
+        f"3. After validation, read `{state_dir}/handoff.md` and check the source for the first open task, or confirm the recorded completion or blocker.",
+        "4. In this destination chat, post a brief acknowledgement in the user's language. Include the validated revision, one source you checked, and the next action or final status. Mention partial review when applicable.",
+        "5. Continue the authorized work from that point. The source chat handles the user's archive decision.",
     ])
     if gates.get("hash_status") != "passed" or gates.get("redaction_status") != "passed":
         lines.extend(["", "Hard stop: validate the continuity package before resuming."])
