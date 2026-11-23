@@ -21,7 +21,7 @@ For a directory installation, copy the entire `skills/session-continuity/` folde
 ## Try a handoff
 
 1. **Save.** Ask your assistant: “Prepare a handoff. Include the files you checked, the unresolved decisions and the first action for the next chat.” In a local workspace, checkpoints live under `.agent/continuity/`.
-2. **Choose where to continue.** Routine work stays in the main chat. When the host supports background subagents, they can handle bounded research or data cleanup and return findings, sources and detail files. Before opening a visible side chat, confirm the purpose and model. For a full transfer at 80%, the skill offers to keep the source model.
+2. **Choose where to continue.** Routine work stays in the main chat. When the host supports background subagents, they can handle bounded research or data cleanup and return findings, sources and detail files. Before opening a visible side chat, confirm the purpose and model. For a full transfer at 80%, the skill offers to keep the source model when the destination supports it. Otherwise, choose a model offered by that host and account or explicitly let the agent pick. A prior preference can cover this choice.
 3. **Resume.** In the receiving chat, open the workspace and ask: “Verify the handoff, check the evidence for the first open item and continue.” If the two assistants see different filesystem paths, export a portable brief from the source skill directory:
 
    ```sh

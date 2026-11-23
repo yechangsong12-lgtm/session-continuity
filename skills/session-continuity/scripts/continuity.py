@@ -484,6 +484,7 @@ def build_portable_handoff(state: dict[str, Any]) -> str:
             f"上面的校验结果来自发送端。如果能访问同一工作区，请在接收端的技能目录运行 "
             f'`python scripts/validate.py --root "<接收端工作区>"{target_option}`，核对 `{relative_dir}/handoff.md` 的修订号。',
             "如果只能看到粘贴的摘要，说明当前可见的依据。执行第一项待办前，请用户提供缺少的原始文件或对应片段。",
+            "如需新选模型，从接收端当前账号对该任务提供的选项中，请用户指定或明确委托 Agent 代选。沿用已有的适用选择；开新对话仍需单独同意。",
             "用用户的语言报告修订号、已复查的证据和下一步。按原任务范围继续，并把结果交回主对话。",
         ]
     else:
@@ -493,6 +494,7 @@ def build_portable_handoff(state: dict[str, Any]) -> str:
             f'`python scripts/validate.py --root "<receiver workspace>"{target_option}` from your installed skill directory '
             f"and match the revision in `{relative_dir}/handoff.md`.",
             "If you can only see the pasted summary, identify the evidence you can inspect. Ask for the specific source file or excerpt needed for the first open task.",
+            "When a new model is needed, offer the receiving account's available options. The user can name a model or explicitly delegate the choice. Honor an applicable standing choice and confirm opening any new visible chat separately.",
             "In the user's language, report the revision, the evidence you checked and your next action. Continue within the original scope and return your findings to the main chat.",
         ]
     return build_handoff(state).rstrip() + "\n\n" + "\n".join(steps) + "\n"
