@@ -473,6 +473,31 @@ def build_bootstrap(state: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_portable_handoff(state: dict[str, Any]) -> str:
+    """Render a checked revision for receivers with a different filesystem or only chat access."""
+    target = state.get("target") or ""
+    relative_dir = f".agent/continuity/targets/{target}" if target else ".agent/continuity"
+    target_option = f" --target {target}" if target else ""
+    if use_chinese_for_handoff(state):
+        steps = [
+            "## 在接收端接手", "",
+            f"上面的校验结果来自发送端。如果能访问同一工作区，请在接收端的技能目录运行 "
+            f'`python scripts/validate.py --root "<接收端工作区>"{target_option}`，核对 `{relative_dir}/handoff.md` 的修订号。',
+            "如果只能看到粘贴的摘要，说明当前可见的依据。执行第一项待办前，请用户提供缺少的原始文件或对应片段。",
+            "用用户的语言报告修订号、已复查的证据和下一步。按原任务范围继续，并把结果交回主对话。",
+        ]
+    else:
+        steps = [
+            "## Pick up this task", "",
+            f"The checks above were performed at the source. If you can access the workspace, run "
+            f'`python scripts/validate.py --root "<receiver workspace>"{target_option}` from your installed skill directory '
+            f"and match the revision in `{relative_dir}/handoff.md`.",
+            "If you can only see the pasted summary, identify the evidence you can inspect. Ask for the specific source file or excerpt needed for the first open task.",
+            "In the user's language, report the revision, the evidence you checked and your next action. Continue within the original scope and return your findings to the main chat.",
+        ]
+    return build_handoff(state).rstrip() + "\n\n" + "\n".join(steps) + "\n"
+
+
 def write_manifest(cdir: Path, root: Path, state: dict[str, Any]) -> dict[str, Any]:
     files: dict[str, Any] = {}
     for name in HASHED_FILES:
@@ -512,17 +537,25 @@ def validate_package_at(root: Path, target: str = "") -> tuple[bool, list[str], 
     else:
         try:
             manifest = json.loads(read_text(manifest_path))
+            if manifest is None:
+                errors.append("invalid manifest: expected an object")
         except json.JSONDecodeError as exc:
             errors.append(f"invalid manifest.json: {exc}")
             manifest = None
-    if manifest:
-        for name, meta in manifest.get("files", {}).items():
+    if manifest is not None:
+        files = manifest.get("files") if isinstance(manifest, dict) else None
+        if not isinstance(files, dict) or set(files) != set(HASHED_FILES):
+            errors.append("manifest must list all checkpoint files")
+            files = {}
+        if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA or manifest.get("revision") != state.get("revision"):
+            errors.append("manifest schema or revision mismatch")
+        for name, meta in files.items():
             path = cdir / name
-            if not path.exists():
+            if not path.is_file():
                 errors.append(f"manifest file missing: {name}")
                 continue
             actual = sha256_file(path)
-            if actual != meta.get("sha256"):
+            if not isinstance(meta, dict) or actual != meta.get("sha256"):
                 errors.append(f"hash mismatch: {name}")
     for name in list(HASHED_FILES) + ["manifest.json"]:
         path = cdir / name
@@ -1236,6 +1269,8 @@ def command_bootstrap(args: argparse.Namespace) -> int:
             print(json.dumps(request["validation"], ensure_ascii=False), file=sys.stderr)
             return 1
         text = request["prompt"]
+    elif args.portable:
+        text = build_portable_handoff(state)
     else:
         text = build_bootstrap(state)
     if args.output:
@@ -1296,6 +1331,7 @@ def configure_bootstrap_parser(parser: argparse.ArgumentParser) -> None:
     add_common_root(parser)
     parser.add_argument("--output", default="")
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--portable", action="store_true", help="Export a verified handoff summary with receiver-local instructions for another assistant.")
     mode.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
     mode.add_argument("--show-source-model", action="store_true", help="Inspect the source chat's actual model and latest usage. No checkpoint needed.")
     parser.add_argument("--inherit-source-model", action="store_true", help="After approval of an 80 percent full transfer, recheck usage and use the source model. Pair with --approved-model for a user-selected override.")

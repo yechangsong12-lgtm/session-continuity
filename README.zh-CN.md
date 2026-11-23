@@ -1,31 +1,37 @@
-# Session Continuity · 会话交接
+# Session Continuity · 会话分工与交接
 
-[English](README.md) · 简体中文
+[English](README.md) · 简体中文 · [下载可直接导入的技能包（ZIP）](https://github.com/yechangsong12-lgtm/session-continuity/releases/latest/download/session-continuity.zip)
 
-支持简体中文和英语的长任务交接技能，适用于 Codex 和 Claude Code。它把批量调查交给子代理，将结论和来源带回主对话，并把目标、证据、待办和第一步操作写入工作区。下一位协作者可以用这些材料接续任务。
+换一个对话，甚至换一个 AI 助手，也能接着做同一件事。Session Continuity 会记下用户的目标、已经确定的事情、证据的位置，以及下一步要做什么。接手方能访问工作区时，可以核对交接版本，打开原始文件，再从第一项待办开始。
 
-## 安装
+比如，你在 WorkBuddy 里对了两份供应商报价，想换到 Claude 桌面版复核差价。交接摘要可以指出两份表分别是哪一行、哪个价格还没确认，以及接下来要向供应商核对什么。若只是改一张图，或者你只说“继续”，就留在原对话完成。
 
-运行随附脚本需要 Python 3.11 或更高版本。下载仓库后，把整个 `skills/session-continuity` 文件夹复制到所选目录，使 `SKILL.md` 位于表中路径。
+## 选择你使用的助手
 
-| 客户端 | 对当前用户生效 | 仅对当前项目生效 |
+| 助手 | 安装入口 | 如何查看用量、接续任务 |
 | --- | --- | --- |
-| Codex | `~/.agents/skills/session-continuity/SKILL.md` | `.agents/skills/session-continuity/SKILL.md` |
-| Claude Code | `~/.claude/skills/session-continuity/SKILL.md` | `.claude/skills/session-continuity/SKILL.md` |
+| Codex | 把技能复制到用户的 `~/.agents/skills/` 或项目的 `.agents/skills/`。[官方技能说明](https://developers.openai.com/codex/skills) | 可选的本地 Hook 检测 80% 用量。可以启用自动存档；整项迁移前仍会向你确认。[配置方法](skills/session-continuity/references/context-settings.md) |
+| DeepSeek Harness（DSH） | 安装到 `$DSH_HOME/skills/` 或 Git 项目的 `.dsh/skills/`。[DSH 接入指南](skills/session-continuity/references/deepseek-harness.md) | 在工作区调用 `/session-continuity`，按 DSH 自己的会话数据判断上下文占用。 |
+| 腾讯 WorkBuddy | 在技能面板上传 ZIP，或使用项目的 `.codebuddy/skills/`。[WorkBuddy 接入指南](skills/session-continuity/references/workbuddy.md) | 查看当前任务的上下文用量圆环和模型，在接手任务能打开的工作空间里存档。 |
+| Claude 桌面版 | Chat 或 Cowork 从技能设置上传 ZIP；本地 Code 标签页也可以读取 Claude Code 技能目录。[按模式查看安装步骤](skills/session-continuity/references/claude-desktop.md) | Chat 可接收摘要和相关文件，Cowork 可连接工作文件夹，Code 标签页可查看当前会话占用。 |
+| Claude Code 命令行 | 复制到用户的 `~/.claude/skills/` 或项目的 `.claude/skills/`。[官方技能说明](https://code.claude.com/docs/en/skills) | 使用 `/session-continuity`。按需配置状态栏，达到 80% 时显示提示。[配置方法](skills/session-continuity/references/context-settings.md) |
 
-`~` 表示用户主目录。客户端的技能发现和调用规则见 [Codex 官方说明](https://developers.openai.com/codex/skills) 和 [Claude Code 官方说明](https://code.claude.com/docs/en/skills)。
+按目录安装时，复制完整的 `skills/session-continuity/`，保留其中的许可证。安装后的入口是 `session-continuity/SKILL.md`。随附脚本使用 Python 3.11+ 标准库。页面顶部的 ZIP 已按技能导入格式打包。
 
-## 使用
+## 试一次交接
 
-- **批量整理和简单搜索。** 直接说“整理这两份价格表”或“查一下这几款产品的规格”即可。Codex 允许根据请求自动选用本技能，是否调用由任务内容和宿主判断。可以指定本次模型、固定以后使用的模型，或让代理按能力与成本选择。子代理把关键结论、来源和明细文件位置带回主对话。
-- **是否另开对话。** “继续”、修一张图、同一份交付物的小改都在当前对话完成。需要独立跟进的旁支，先询问是否另开和使用哪个模型，得到同意后才创建。子对话的结论和证据先交回主对话。主任务与旁支均已完成，且子对话没有待办、待审、独有证据和保留要求时，用户已授权自动整理可归档该子对话；否则询问是否归档这个具体子对话。普通旁支的主对话始终保留。
-- **上下文达到 80%。** 在 Codex 注册随附 hook 后，默认在界面提醒。希望自动保存现场时，可以启用本机的 `auto_checkpoint_at_80` 偏好。启用后可自动保存并校验交接资料。整项迁移会读取原对话实际模型 X，再问一句“要沿用原对话的 X 模型开接续对话吗？也可换模型。”只需确认本次开聊即可沿用当前模型。创建后会核实接收方实际模型。说“继续”仍在原对话执行。仅在真实来源已达 80% 且仍需整体迁移、整个主任务已交接、新对话已确认接手时，才询问是否归档原对话，收到明确同意后执行。询问前会再次测量当前占用。压缩后占用已回落或原对话仍有工作时，保留原对话。Claude Code 提供状态栏提示，用户可在看到提示后发起交接。[配置与宿主差异](skills/session-continuity/references/context-settings.md)
-- **交接和接续。** 在当前对话说“用 session-continuity 为这个项目生成交接”，在新对话说“验证同一工作区的交接，从第一项待办继续”。也可在 Codex 输入 `$session-continuity`，或在 Claude Code 输入 `/session-continuity`，再说明目标。
+1. **在原对话存档。** 可以直接说：“准备一份交接，写明查过哪些文件、哪些问题还没定、接手后的第一步是什么。”本地工作区的交接资料保存在 `.agent/continuity/`。
+2. **决定在哪里继续。** 日常任务留在主对话。宿主支持后台子代理时，可让低成本模型处理有明确范围的整理和检索，再交回结论、来源与明细。需要你单独跟进的旁支，会先问是否开新对话、用哪个模型。80% 时若确实要整体迁移，默认提议沿用原模型。
+3. **让接手方核实。** 在新对话里打开同一工作区，说：“验证交接版本，复查第一项待办的依据，然后继续。”两个助手看到的磁盘路径不同时，可以在来源端的技能目录导出一份可直接粘贴的摘要：
 
-交接文件默认保存在项目的 `.agent/continuity/`。完整步骤见[中文技能说明](skills/session-continuity/references/workflow.zh-CN.md)。
+   ```sh
+   python scripts/bootstrap.py --root "/path/to/work" --portable --output handoff.md
+   ```
+
+   把摘要和相应证据交给接手方。只能看到聊天文字时，接手方应说清实际读到了什么。校验通过说明交接文件完整；涉及价格、数量等关键数字，仍需回查原表。
+
+普通旁支会把结果交回主对话。主任务和旁支都结束、证据已保留时，再按你的偏好整理子对话。整项迁移后，只有接手方确认接手并得到你的同意，才归档原对话。[完整中文流程](skills/session-continuity/references/workflow.zh-CN.md)
 
 ## 项目来源与许可
 
-本项目基于 [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill) 的存档、校验、接手续接和回执工具开发。本仓库维护中英文流程、低成本子代理分工、上下文提醒和开新对话时的模型确认。上游作者以 [MIT 许可证](https://github.com/r-design-j/codex-session-continuity-skill/blob/4a5a597e25b07b89bc1594abfc83dd5183d6adea/LICENSE) 发布了这些基础工具。
-
-项目使用 [MIT 许可证](LICENSE)。
+本项目基于 [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill) 的存档、校验、接续与回执工具开发。本版本维护中英文流程、客户端接入、上下文提醒和模型确认。仓库与可安装技能包均保留上游版权声明。[MIT 许可证](LICENSE)

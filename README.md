@@ -1,31 +1,37 @@
 # Session Continuity
 
-English · [简体中文](README.zh-CN.md)
+English · [简体中文](README.zh-CN.md) · [Download the skill (.zip)](https://github.com/yechangsong12-lgtm/session-continuity/releases/latest/download/session-continuity.zip)
 
-Session Continuity is an English and Simplified Chinese agent skill for long-running work in Codex and Claude Code. Delegate bulk work to an economical subagent, keep a record of decisions and evidence, and let a new chat pick up from a verified checkpoint.
+Pick up a long-running AI task in another chat or assistant. Session Continuity records what the user asked for, which decisions were made, where the evidence lives, and what to do next. With access to the workspace, the receiving assistant can verify the saved revision and check its first task against the original source.
 
-## Install
+For example, you might reconcile two supplier quotes in WorkBuddy and review the discrepancy in Claude Desktop. The handoff can point to the exact rows, explain which price still needs confirmation, and carry the question into the next chat. You can also finish the work where you started: a small correction or “continue” stays in the current chat.
 
-Copy the `skills/session-continuity` directory to one of the locations below. The bundled scripts require Python 3.11 or later. The Markdown handoff format also works in environments without local script execution.
+## Choose your assistant
 
-| Client | Personal installation | Project installation |
+| Assistant | Set it up | Context and handoff |
 | --- | --- | --- |
-| Codex | `~/.agents/skills/session-continuity/` | `.agents/skills/session-continuity/` |
-| Claude Code | `~/.claude/skills/session-continuity/` | `.claude/skills/session-continuity/` |
+| Codex | Copy the skill to `~/.agents/skills/` or your project's `.agents/skills/`. [Codex skills](https://developers.openai.com/codex/skills) | The optional local hook detects 80% usage. You can opt in to a checkpoint; moving the whole task still requires your confirmation. [Hook setup](skills/session-continuity/references/context-settings.en.md) |
+| DeepSeek Harness (DSH) | Install under `$DSH_HOME/skills/` or a Git project's `.dsh/skills/`. [DSH guide](skills/session-continuity/references/deepseek-harness.md) | Load `/session-continuity` in the workspace. Use DSH's own session data to check context pressure. |
+| Tencent WorkBuddy | Import the ZIP in the Skills panel, or use the project's `.codebuddy/skills/`. [WorkBuddy guide](skills/session-continuity/references/workbuddy.md) | Check the task's context ring and selected model. Save the handoff in a workspace the next task can open. |
+| Claude Desktop | Upload the ZIP for Chat or Cowork. The local Code tab can use Claude Code's skill directory. [Desktop setup by mode](skills/session-continuity/references/claude-desktop.md) | Share a summary and relevant files in Chat, use a connected folder in Cowork, or check the current context in the Code tab. |
+| Claude Code CLI | Copy the skill to `~/.claude/skills/` or the project's `.claude/skills/`. [Claude Code skills](https://code.claude.com/docs/en/skills) | Call `/session-continuity`. An optional status line shows when usage reaches 80%. [Status line setup](skills/session-continuity/references/context-settings.en.md) |
 
-The installation directory should contain `SKILL.md` directly. See [Codex skill installation](https://developers.openai.com/codex/skills) and [Claude Code skills](https://code.claude.com/docs/en/skills).
+For a directory installation, copy the entire `skills/session-continuity/` folder, including its license, so the installed entry is `session-continuity/SKILL.md`. The scripts use Python 3.11+ and its standard library. The upload-ready ZIP contains the same skill.
 
-## Use it
+## Try a handoff
 
-- **Delegate research or data cleanup.** Ask “Reconcile these two price lists” or “Look up the specifications for these five products.” Codex can select the skill from the request. Choose a model for this task, set a fixed preference, or let the agent pick a capable low-cost model. The result includes key findings, sources and the location of detailed files.
-- **Choose a separate chat.** Continue edits to the same deliverable, including a single-image fix, in its current chat. For a side task that needs independent follow-up, the assistant asks whether to open a separate chat and which model to use. Bring the side task’s findings and evidence back to the main chat. Once both tasks finish and the side chat has no pending work, review, unique evidence or retention request, it can be archived with automatic-cleanup permission. Otherwise ask about that specific side chat when eligible. The main chat stays active.
-- **Hand off at 80%.** Register the Codex hook for a visible reminder. Enable `auto_checkpoint_at_80` to checkpoint automatically. For a full migration, the assistant reads the actual source model and asks once, “Open a successor chat using the current model, X? You can choose another model.” It waits for your approval, opens the chat with the approved model, and verifies the destination model. “Continue” keeps the work in the current chat. After the whole main task moves and the successor confirms its revision and next step, the source rechecks usage and remaining work. Ask about archiving the source only if it still meets 80% and has no remaining work. After compaction releases space, keep it active. Claude Code users can add an 80% reminder to their status line. [Context settings and adapters](skills/session-continuity/references/context-settings.en.md)
-- **Resume work.** Ask “Prepare a handoff for this project.” In the next chat, say “Validate the checkpoint in the same workspace and continue from the first open task.” To invoke the skill explicitly, use `$session-continuity` in Codex or `/session-continuity` in Claude Code. Ask in Chinese or English and the assistant follows that language.
+1. **Save.** Ask your assistant: “Prepare a handoff. Include the files you checked, the unresolved decisions and the first action for the next chat.” In a local workspace, checkpoints live under `.agent/continuity/`.
+2. **Choose where to continue.** Routine work stays in the main chat. When the host supports background subagents, they can handle bounded research or data cleanup and return findings, sources and detail files. Before opening a visible side chat, confirm the purpose and model. For a full transfer at 80%, the skill offers to keep the source model.
+3. **Resume.** In the receiving chat, open the workspace and ask: “Verify the handoff, check the evidence for the first open item and continue.” If the two assistants see different filesystem paths, export a portable brief from the source skill directory:
 
-The default checkpoint location is `.agent/continuity/` inside the workspace. [Full workflow](skills/session-continuity/SKILL.md)
+   ```sh
+   python scripts/bootstrap.py --root "/path/to/work" --portable --output handoff.md
+   ```
+
+   Give the receiver that brief and access to the evidence it needs. A text-only receiver reports what it could actually inspect. File integrity checks cover the saved checkpoint; important figures still need to be checked against the source.
+
+A side chat returns its work to the main chat. Cleanup applies to the side chat once both tasks finish and its evidence is retained. Archiving the source after a full transfer requires confirmed takeover and your agreement. [Full workflow](skills/session-continuity/SKILL.md)
 
 ## Origin and license
 
-This project extends the checkpoint, validation, bootstrap, and receipt tools in [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). This repository maintains the bilingual workflow, low-cost delegation guidance, context alerts, and model confirmation used for visible chat transfers. The upstream author published the underlying tools under the [MIT License](https://github.com/r-design-j/codex-session-continuity-skill/blob/4a5a597e25b07b89bc1594abfc83dd5183d6adea/LICENSE).
-
-[MIT](LICENSE)
+Session Continuity extends the checkpoint, validation, bootstrap and receipt tools from [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). This edition maintains the bilingual workflow, client integrations, context alerts and model confirmation. Both the repository and the installable skill carry the original copyright notice. [MIT license](LICENSE)

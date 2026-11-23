@@ -32,6 +32,8 @@
 
 ## 上下文达到 80% 时
 
+按实际运行环境选择[DeepSeek Harness](deepseek-harness.md)、[腾讯 WorkBuddy](workbuddy.md) 或 [Claude 桌面版的 Chat、Cowork 和 Code](claude-desktop.md) 指南。在 Codex 以外运行存档脚本时，用 `--source` 标出实际来源，例如 `--source workbuddy`。使用该助手当前任务的模型与用量证据。两个环境的路径不同时，可用 `bootstrap.py --root WORKSPACE --portable` 导出包含结论、证据位置和待办的交接文本。用户写入摘要的路径和来源会随文本保留；通过用户认可的位置提供接手方需要的证据文件。
+
 调整 Codex 默认窗口、安装 Codex 事件提醒或给 Claude Code 状态栏添加 80% 提示时，读 [上下文配置与提醒](context-settings.md)。只改用户指定的设置。窗口长度、有效窗口和自动压缩阈值分别核验。
 
 用户可为自己启用“达到 80% 自动保存现场”。Codex 本机将这项偏好保存在 `$CODEX_HOME/hooks/session-continuity.json` 的 `{"auto_checkpoint_at_80": true}`。该用户主动开启后，达到阈值可先自动保存并校验现场。整项迁移时读取原对话正在使用的实际模型 X，用一句话询问“要沿用原对话的 X 模型开接续对话吗？也可换模型。”用户同意沿用即已选好模型，明确同意本次开聊后再创建。“继续”仍在原对话执行。后台子代理的经济模型偏好单独适用。新安装默认提醒，是否自动保存及是否开新对话由使用者选择。一般旁支、归档和删除各有独立的授权范围。
@@ -60,7 +62,7 @@
 - 在实际工作区运行脚本。先读已有的 `.agent/continuity/current.yml`、`handoff.md` 和清单。多个独立目标共用工作区时，用 `--target` 配唯一且可读的英文或数字短名，中文全称写入摘要。写下一版时整合仍有效的决定、待办、阻塞、证据指针和复核状态。
 - 用 [checkpoint.py](../scripts/checkpoint.py) 的 `--latest-user-request`、`--active-goal` 记目标，用 `--source` 标明决定的实际来源（例如 `claude`、`user`），以可重复的 `--decision`、`--context-file`、`--changed-file`、`--blocked-item` 和 `--open-task` 记交接要素。各项依据不同就把具体来源附在该项决定内；`--evidence` 用于共同证据。脚本从 `--root` 指定的工作区生成版本、摘要和清单。已有项目约定交付位置时，只在内部工作目录保存交接。
 - 用 [validate.py](../scripts/validate.py) 核对文件、哈希、脱敏状态与写锁。使用同一个 `--root` 和可选 `--target`。校验通过，再读 `handoff.md` 和 [bootstrap.py](../scripts/bootstrap.py) 输出的接续提示。清单覆盖交接包自身。接手时回到所引源文件或网页复核关键数值和外部状态，然后执行第一项待办。
-- 80% 整项迁移时，先用只读命令 `bootstrap.py --show-source-model --thread-id UUID` 查原对话实际模型。UUID 替换为真实来源对话 ID，后续命令沿用同一工作区与目标。等用户明确同意本次开聊，再用 `bootstrap.py --prepare-thread --inherit-source-model --expected-source-model MODEL_SHOWN --thread-id UUID` 准备请求；用户改选模型时增加 `--approved-model OVERRIDE`。核实请求的 `approved_model` 与用户本次批准的一致，在 `create_thread` 调用中显式传入该值作为 `model`。原模型未查到、确认后发生变化或不可用时，保留主对话并询问。普通旁支在同一问题里确认是否开聊和选择模型，获同意后用 `bootstrap.py --prepare-thread --approved-model MODEL_ID` 并传入已批准的模型。用校验过的提示启动同一工作区的新对话。告知接收方按“核实接手”在自身对话报告结果。宿主实际返回 ID 后，用 [thread_receipt.py](../scripts/thread_receipt.py) 的 `--created-thread-id` 记录；仍在准备工作树时用 `--pending-worktree-id`。只有准备文件时，报告“交接已准备”。回执用于定位接收方，实际接手以接收方核验结果为准。 准备命令报错时留在原对话。以前生成的请求和回执只供核对先前操作。 将 MODEL_SHOWN 替换为刚才向用户展示的原模型 ID；若模型发生变化，命令会停止并要求重新确认。
+- 在 Codex 中做 80% 整项迁移时，先用只读命令 `bootstrap.py --show-source-model --thread-id UUID` 查原对话实际模型。UUID 替换为真实来源对话 ID，后续命令沿用同一工作区与目标。等用户明确同意本次开聊，再用 `bootstrap.py --prepare-thread --inherit-source-model --expected-source-model MODEL_SHOWN --thread-id UUID` 准备请求；用户改选模型时增加 `--approved-model OVERRIDE`。核实请求的 `approved_model` 与用户本次批准的一致，在 `create_thread` 调用中显式传入该值作为 `model`。原模型未查到、确认后发生变化或不可用时，保留主对话并询问。普通旁支在同一问题里确认是否开聊和选择模型，获同意后用 `bootstrap.py --prepare-thread --approved-model MODEL_ID` 并传入已批准的模型。用校验过的提示启动同一工作区的新对话。告知接收方按“核实接手”在自身对话报告结果。宿主实际返回 ID 后，用 [thread_receipt.py](../scripts/thread_receipt.py) 的 `--created-thread-id` 记录；仍在准备工作树时用 `--pending-worktree-id`。只有准备文件时，报告“交接已准备”。回执用于定位接收方，实际接手以接收方核验结果为准。 准备命令报错时留在原对话。以前生成的请求和回执只供核对先前操作。 将 MODEL_SHOWN 替换为刚才向用户展示的原模型 ID；若模型发生变化，命令会停止并要求重新确认。
 - 在支持 Python 的其他宿主，通用交接脚本也可使用。将启动提示中的 Codex 专属入口替换为当前宿主可用的命令或文件路径。没有本地脚本执行能力时，直接用上面的交接格式输出一段可复制的交接。
 
 例如在已安装 Python 3.11+ 的环境中，从技能目录执行下面的命令。将工作区、实际证据和待办替换为本次任务的内容。Windows 可使用已验证可用的 Python 解释器执行相同的参数。
