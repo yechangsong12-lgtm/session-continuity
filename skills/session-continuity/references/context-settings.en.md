@@ -16,6 +16,19 @@ The default is `$CODEX_HOME/config.toml`, falling back to `~/.codex/config.toml`
 
 `model_auto_compact_token_limit` controls normal automatic compaction. An unset value uses the model default. `model_post_turn_compact_threshold_percent` controls compaction after a completed turn. The hook below makes its own 80% measurement. [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference) · [Models and context](https://learn.chatgpt.com/docs/models) · [Desktop slash commands](https://learn.chatgpt.com/docs/reference/slash-commands)
 
+<a id="codex-1m"></a>
+
+### Example: 1,000,000 tokens (1M)
+
+For an explicit 1M request, verify the model used by this Codex session against the [official model limits](https://learn.chatgpt.com/docs/models?surface=app). If support is uncertain or the model has a lower limit, report what you found and keep the existing value.
+
+```sh
+python scripts/context_window.py --set 1000000
+python scripts/context_window.py
+```
+
+The expected readback is `model_context_window = 1000000`. Once a session loads the new configuration, check its actual model and `payload.info.model_context_window` in its latest valid `token_count` event. Report that number as the effective window. If a fresh reading is unavailable, report “configured 1,000,000; effective window pending verification.” Continue to calculate the 80% reminder from the observed window. The context-window command changes only the window setting.
+
 ## Register the Codex hook
 
 1. Inspect the skill's `scripts/context-reminder.py` and copy it to `$CODEX_HOME/hooks/context-reminder.py`. The default Codex home is `~/.codex`. On Windows, discover your interpreter with `py -3 -c "import sys; print(sys.executable)"`. On macOS or Linux, use `command -v python3`.

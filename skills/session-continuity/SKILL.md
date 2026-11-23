@@ -1,6 +1,6 @@
 ---
 name: session-continuity
-description: Delegate bulk research, checkpoint long tasks, and resume from evidence across Codex, DeepSeek Harness, WorkBuddy and Claude. 批量整理与搜索、80% 存档、开聊选型、跨助手接续与归档。
+description: Delegate bulk research, checkpoint long tasks, and resume across Codex, DeepSeek Harness, WorkBuddy and Claude. Codex 1M context setup · 批量整理与搜索、80% 存档、开聊选型与跨助手交接。
 ---
 
 # Session Continuity
@@ -30,6 +30,10 @@ A background subagent returns its findings to the current chat. An ordinary side
 When selecting a model, check the destination host, account and execution mode. Use the picker or routing list for the actual operation: background agents and visible chats may have different choices. Offer two ways to choose: the user names an available model, or explicitly lets the agent decide. Apply a matching standing preference without asking again. Without either, ask once before dispatch. An agent authorized to choose should pick a capable, economical option from the verified list and identify it. If the list is inaccessible, ask the user to check the picker; if it shows only one option, say which one. Ordinary work in the current chat continues on its current model.
 
 Ask the subagent for **key findings, sources and the location of detailed results**. Include unresolved discrepancies and the source date, page, sheet or row when it matters. Reuse existing detail files. A short search can return its links directly. In the main chat, check the figures and samples that affect the decision. When the host lacks independent subagents or model selection, describe how the work was performed.
+
+## Set a 1M context window in Codex
+
+When the user asks for **1M (1,000,000 tokens)**, including in an installation request, check the active Codex model and its documented limit. If supported, run `python scripts/context_window.py --set 1000000` from the installed skill directory, then read back the setting with `python scripts/context_window.py`. A plain installation leaves the window as configured. Report the configured value and, when a session using the new configuration is available, its observed effective window separately. Base the 80% threshold on that effective window. [Verification steps](references/context-settings.en.md#codex-1m)
 
 ## What to do at 80%
 

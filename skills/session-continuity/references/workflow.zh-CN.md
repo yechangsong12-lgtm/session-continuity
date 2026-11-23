@@ -30,6 +30,10 @@
 
 先把子对话的结论、来源和明细文件位置交回主对话。只有主任务与旁支均完成后，才考虑整理该**子对话**。确认没有待办、待审或只保存在子对话里的证据，也没有用户要求保留。具备这些条件且用户授权自动整理时，可以归档该子对话；具备条件但缺少自动整理授权时，询问是否归档这个具体子对话。仍有未结事项时保留子对话。普通旁支的创建、接手或完成都不会触发归档主对话的询问。
 
+## 在 Codex 中启用 1M 上下文
+
+用户明确要求将 Codex 默认窗口设为 **1M（1,000,000 tokens）** 时，包括“安装并设为 1M”，先核对当前模型支持的上限。支持时，在技能目录执行 `python scripts/context_window.py --set 1000000`，再运行 `python scripts/context_window.py` 回读。普通安装保留原配置。分别报告写入值和加载新配置的会话实际观测到的有效窗口，80% 按有效窗口计算。[核验步骤](context-settings.md#codex-1m)
+
 ## 上下文达到 80% 时
 
 按实际运行环境选择[DeepSeek Harness](deepseek-harness.md)、[腾讯 WorkBuddy](workbuddy.md) 或 [Claude 桌面版的 Chat、Cowork 和 Code](claude-desktop.md) 指南。在 Codex 以外运行存档脚本时，用 `--source` 标出实际来源，例如 `--source workbuddy`。使用该助手当前任务的模型与用量证据。两个环境的路径不同时，可用 `bootstrap.py --root WORKSPACE --portable` 导出包含结论、证据位置和待办的交接文本。用户写入摘要的路径和来源会随文本保留；通过用户认可的位置提供接手方需要的证据文件。

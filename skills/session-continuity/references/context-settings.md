@@ -18,6 +18,19 @@ python3 scripts/context_window.py --set <用户明确指定的正整数>
 
 `model_context_window` 配置窗口，`model_auto_compact_token_limit` 配置常规自动压缩的 token 阈值，后者未设置时使用模型默认值。`model_post_turn_compact_threshold_percent` 可在最终回复后按可用窗口的百分比触发压缩，省略或为 `0` 时关闭这一回合结束触发方式。80% 提醒由下方 hook 独立判断。 [Codex 配置参考](https://learn.chatgpt.com/docs/config-file/config-reference) · [模型与窗口](https://learn.chatgpt.com/docs/models) · [桌面斜杠命令](https://learn.chatgpt.com/docs/reference/slash-commands) · [CLI 命令](https://learn.chatgpt.com/docs/developer-commands?surface=cli#inspect-the-session-with-status)
 
+<a id="codex-1m"></a>
+
+### 示例：设为 1M（100 万 tokens）
+
+用户明确要求 1M 时，用当前 Codex 会话实际使用的模型核对[官方模型上限](https://learn.chatgpt.com/docs/models?surface=app)。如果支持情况无法核实，或模型上限低于 1M，保留原值并说明原因。
+
+```sh
+python scripts/context_window.py --set 1000000
+python scripts/context_window.py
+```
+
+预期回读为 `model_context_window = 1000000`。等会话加载新配置后，核对它实际使用的模型，从该会话最近一条有效 `token_count` 事件的 `payload.info.model_context_window` 读取有效窗口。如果还没有新采样，报告“已配置 1,000,000，实际有效窗口待核验”。80% 提醒继续按实测有效窗口计算。这条命令只改窗口设置。
+
 ## 达到 80% 后的处理
 
 `scripts/context-reminder.py` 是可安装的 Codex 命令 hook。它在收到事件时核对主对话的会话 ID 和日志位置，以最近一条可用样本的 `info.last_token_usage.total_tokens / info.model_context_window` 计算用量。桌面百分比可能采用不同的估算。同一次超过阈值只触发一次。跨压缩延后处理时，通过来源会话 ID、原始采样字节位置、token 用量与有效窗口复核较早的达标事件；后续低读数可以是压缩的结果。记录中的 UTC 时间表示观察时间。模拟用例单独标注。
