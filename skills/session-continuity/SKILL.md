@@ -13,10 +13,10 @@ Keep the user's task in its current chat by default. Use a new visible chat in t
 
 | What is happening? | What to do |
 | --- | --- |
-| The user says “continue”, requests a correction, or is still refining the same deliverable. | Work here. Fixing the teeth in one product image belongs with the rest of that image set. |
-| A bounded search or batch job can return one result for the main task. | Use a background subagent if available. Bring back key findings, sources and the location of any detailed file. The main chat stays active. |
-| There is a separate deliverable that needs the user's own follow-up across multiple rounds, and the main task can proceed independently. | Propose a side chat. For example, one supplier's conflicting quote needs a reply and a later purchasing decision while the catalog work continues. Explain the part that would move and ask whether to open the chat and which model to use. |
-| The user expressly asks for a new chat, or the **whole unfinished task** still needs to move after a high-context checkpoint. | Honor the requested scope. Confirm any outstanding creation or model choice, then use the handoff steps below. |
+| The goal is the same and the user is continuing the work, adding requirements, or revising or checking an existing result. | Continue in the current chat with its context and decisions. |
+| Part of the work can be completed independently and the main task only needs its result. | Use a background subagent if available. Return the findings, sources and location of any detailed results to the main chat. |
+| A side task has its own outcome, needs ongoing user follow-up, and can proceed alongside the main task. | Suggest a separate chat. Explain what would move and why, then confirm whether to open it and which model to use. |
+| Context usage reaches 80% while the main task is still unfinished. | Checkpoint according to the user’s settings and recheck current usage. Continue here if there is room. Ask before moving the whole task to a new chat. |
 
 **Model choice.** For a new model choice, offer the models actually available to that account for that kind of task. The user can name one or let the agent choose. Apply an existing preference that covers this task. When delegated the choice, use a capable, economical model and say which one. If the user has already authorized a specific chat, ask only for the missing selection.
 
@@ -26,7 +26,7 @@ Keep the user's task in its current chat by default. Use a new visible chat in t
 2. Save the current goal, corrections, decisions and reasons, checked files or sources, pending work and one concrete next action. Keep credentials and access-bearing URLs out. For local work use the same workspace and optional `--target` for each command:
 
    ```text
-   python scripts/checkpoint.py --root WORKSPACE --active-goal "Reconcile supplier quotes" --context-file quotes.csv --open-task "Check the currency in row 31"
+   python scripts/checkpoint.py --root WORKSPACE --active-goal "CURRENT_GOAL" --context-file "EVIDENCE_FILE" --open-task "NEXT_ACTION"
    python scripts/validate.py --root WORKSPACE
    python scripts/bootstrap.py --root WORKSPACE
    ```

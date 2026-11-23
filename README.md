@@ -8,10 +8,10 @@ Save progress on a long task and pick it up in a new chat **within the same assi
 
 | Your task | What the skill does |
 | --- | --- |
-| “Continue” or “Fix the teeth in image 06 of this nine-image set.” | Continue in the original chat. |
-| “Group these reviews and give me the main complaints.” | A background subagent can return findings, sources and the detail file to the main chat. |
-| A supplier's conflicting quote will need a reply, a second check and your decision, while catalog work can continue. | Suggest a visible side chat for the quote alone. Explain the scope and ask whether to open it and which model to use. |
-| The current chat reaches 80% and the whole task is unfinished. | Checkpoint according to your settings. Recheck after compaction. If space is still tight and the remaining task needs to move, ask before opening a successor. |
+| The goal is the same and the user is continuing the work, adding requirements, or revising or checking an existing result. | Continue in the current chat with its context and decisions. |
+| Part of the work can be completed independently and the main task only needs its result. | Use a background subagent if available. Return the findings, sources and location of any detailed results to the main chat. |
+| A side task has its own outcome, needs ongoing user follow-up, and can proceed alongside the main task. | Suggest a separate chat. Explain what would move and why, then confirm whether to open it and which model to use. |
+| Context usage reaches 80% while the main task is still unfinished. | Checkpoint according to the user’s settings and recheck current usage. Continue here if there is room. Ask before moving the whole task to a new chat. |
 
 You can also request a new chat directly. For a model choice, select an available model yourself or let the agent choose. Existing preferences for the same kind of task carry forward. For a full migration the skill offers to keep the current model when available.
 
