@@ -11,7 +11,7 @@ import unittest
 from uuid import uuid4
 
 
-SCRIPT = Path(__file__).with_name("context-reminder.py")
+SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "session-continuity" / "scripts" / "context-reminder.py"
 
 
 class ContextHookTests(unittest.TestCase):

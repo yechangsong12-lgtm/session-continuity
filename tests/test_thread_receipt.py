@@ -11,7 +11,7 @@ import time
 import unittest
 
 
-SCRIPTS = Path(__file__).resolve().parent
+SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "session-continuity" / "scripts"
 
 
 class ThreadReceiptTests(unittest.TestCase):

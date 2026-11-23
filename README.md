@@ -2,36 +2,43 @@
 
 English · [简体中文](README.zh-CN.md) · [Download the skill (.zip)](https://github.com/yechangsong12-lgtm/session-continuity/releases/latest/download/session-continuity.zip)
 
-Pick up a long-running AI task in another chat or assistant. Session Continuity records what the user asked for, which decisions were made, where the evidence lives, and what to do next. With access to the workspace, the receiving assistant can verify the saved revision and check its first task against the original source.
+Save progress on a long task and pick it up in a new chat **within the same assistant**. The checkpoint records what the user asked for, what changed, where to find the evidence and the first unfinished step. The new chat checks that record before continuing.
 
-For example, you might reconcile two supplier quotes in WorkBuddy and review the discrepancy in Claude Desktop. The handoff can point to the exact rows, explain which price still needs confirmation, and carry the question into the next chat. You can also finish the work where you started: a small correction or “continue” stays in the current chat.
+## When should a new chat open?
 
-## Choose your assistant
+| Your task | What the skill does |
+| --- | --- |
+| “Continue” or “Fix the teeth in image 06 of this nine-image set.” | Continue in the original chat. |
+| “Group these reviews and give me the main complaints.” | A background subagent can return findings, sources and the detail file to the main chat. |
+| A supplier's conflicting quote will need a reply, a second check and your decision, while catalog work can continue. | Suggest a visible side chat for the quote alone. Explain the scope and ask whether to open it and which model to use. |
+| The current chat reaches 80% and the whole task is unfinished. | Checkpoint according to your settings. Recheck after compaction. If space is still tight and the remaining task needs to move, ask before opening a successor. |
 
-| Assistant | Set it up | Context and handoff |
-| --- | --- | --- |
-| Codex | Copy the skill to `~/.agents/skills/` or your project's `.agents/skills/`. [Codex skills](https://developers.openai.com/codex/skills) | The optional local hook detects 80% usage. You can opt in to a checkpoint; moving the whole task still requires your confirmation. [Hook setup](skills/session-continuity/references/context-settings.en.md) |
-| DeepSeek Harness (DSH) | Install under `$DSH_HOME/skills/` or a Git project's `.dsh/skills/`. [DSH guide](skills/session-continuity/references/deepseek-harness.md) | Load `/session-continuity` in the workspace. Use DSH's own session data to check context pressure. |
-| Tencent WorkBuddy | Import the ZIP in the Skills panel, or use the project's `.codebuddy/skills/`. [WorkBuddy guide](skills/session-continuity/references/workbuddy.md) | Check the task's context ring and selected model. Save the handoff in a workspace the next task can open. |
-| Claude Desktop | Upload the ZIP for Chat or Cowork. The local Code tab can use Claude Code's skill directory. [Desktop setup by mode](skills/session-continuity/references/claude-desktop.md) | Share a summary and relevant files in Chat, use a connected folder in Cowork, or check the current context in the Code tab. |
-| Claude Code CLI | Copy the skill to `~/.claude/skills/` or the project's `.claude/skills/`. [Claude Code skills](https://code.claude.com/docs/en/skills) | Call `/session-continuity`. An optional status line shows when usage reaches 80%. [Status line setup](skills/session-continuity/references/context-settings.en.md) |
+You can also request a new chat directly. For a model choice, select an available model yourself or let the agent choose. Existing preferences for the same kind of task carry forward. For a full migration the skill offers to keep the current model when available.
 
-For a directory installation, copy the entire `skills/session-continuity/` folder, including its license, so the installed entry is `session-continuity/SKILL.md`. The scripts use Python 3.11+ and its standard library. The upload-ready ZIP contains the same skill.
+A side chat returns its result to the main chat. Consider cleaning up the **side chat** after both tasks finish and all evidence is retained. Archiving the **original chat** after a full migration requires verified takeover and your explicit agreement.
 
-## Try a handoff
+## Why consider 1M context in Codex?
 
-1. **Save.** Ask your assistant: “Prepare a handoff. Include the files you checked, the unresolved decisions and the first action for the next chat.” In a local workspace, checkpoints live under `.agent/continuity/`.
-2. **Choose where to continue.** Routine work stays in the main chat. When the host supports background subagents, they can handle bounded research or data cleanup and return findings, sources and detail files. Before opening a visible side chat, confirm the purpose and model. For a full transfer at 80%, the skill offers to keep the source model when the destination supports it. Otherwise, choose a model offered by that host and account or explicitly let the agent pick. A prior preference can cover this choice.
-3. **Resume.** In the receiving chat, open the workspace and ask: “Verify the handoff, check the evidence for the first open item and continue.” If the two assistants see different filesystem paths, export a portable brief from the source skill directory:
+Project instructions, Markdown files the assistant actually reads, and past decisions can consume tens of thousands of tokens before a large project’s first edit. In a November 2026 Codex desktop model catalog, GPT‑6.2 Sol’s 500K default and Astra’s 272K default gave effective windows of **475K and 258.4K** at a 95% allowance. With 60K already used for project material, Astra would have **198.4K** left for the conversation, code and tool results.
 
-   ```sh
-   python scripts/bootstrap.py --root "/path/to/work" --portable --output handoff.md
-   ```
+A compressed summary may remember “we chose B” and omit why A was rejected. A larger window gives the assistant more room to compare the original requirements and evidence. On supported Codex models you can ask this skill to set **1,000,000 tokens** and report the effective window in a fresh session. The 95% allowance in the example and the threshold for automatic compaction are separate settings. The skill’s optional checkpoint uses **80% of the observed effective window**. [Official model limits](https://learn.chatgpt.com/docs/models?surface=app) · [Compaction settings](https://learn.chatgpt.com/docs/config-file/config-reference) · [1M setup](skills/session-continuity/references/context-settings.en.md#codex-1m)
 
-   Give the receiver that brief and access to the evidence it needs. A text-only receiver reports what it could actually inspect. File integrity checks cover the saved checkpoint; important figures still need to be checked against the source.
+## Install and try it
 
-A side chat returns its work to the main chat. Cleanup applies to the side chat once both tasks finish and its evidence is retained. Archiving the source after a full transfer requires confirmed takeover and your agreement. [Full workflow](skills/session-continuity/SKILL.md)
+Install in the assistant you already use. Each guide covers that client's skill folder or ZIP import and its available context readings.
+
+| Client | Where to start |
+| --- | --- |
+| Codex | Copy the complete skill folder to `~/.agents/skills/` or the project's `.agents/skills/`. [Optional 80% hook](skills/session-continuity/references/context-settings.en.md) |
+| DeepSeek Harness | Use `$DSH_HOME/skills/` or the project's `.dsh/skills/`. [DSH guide](skills/session-continuity/references/deepseek-harness.md) |
+| Tencent WorkBuddy | Import the release ZIP in the Skills panel, or use the project's `.codebuddy/skills/`. [WorkBuddy guide](skills/session-continuity/references/workbuddy.md) |
+| Claude Desktop | Choose the instructions for Chat, Cowork or the Code tab. [Desktop guide](skills/session-continuity/references/claude-desktop.md) |
+| Claude Code CLI | Copy the skill to `~/.claude/skills/` or the project's `.claude/skills/`. [Optional status line](skills/session-continuity/references/context-settings.en.md#configure-the-claude-code-status-line) |
+
+Ask **“Save a checkpoint with the evidence and the first unfinished step.”** After you choose to move, ask the new chat in the same assistant to validate that checkpoint and resume. Local scripts require Python 3.11+ and use `.agent/continuity/` in the workspace. In a text-only chat, paste the handoff and attach the evidence the next step requires. [Full workflow](skills/session-continuity/SKILL.md)
 
 ## Origin and license
 
-Session Continuity extends the checkpoint, validation, bootstrap and receipt tools from [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). This edition maintains the bilingual workflow, client integrations, context alerts and model confirmation. Both the repository and the installable skill carry the original copyright notice. [MIT license](LICENSE)
+This project extends the checkpoint, validation and receipt tools in [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). The repository and installable skill both include the upstream copyright notice and [MIT license](LICENSE).
+
+To test a checkout, run `python skills/session-continuity/scripts/self_test.py` and `python -m unittest discover -s tests` from the repository root.

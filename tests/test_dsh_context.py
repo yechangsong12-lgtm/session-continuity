@@ -2,7 +2,11 @@ import io
 import json
 import unittest
 
-from dsh_context import read_snapshot
+from pathlib import Path
+import runpy
+
+SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "session-continuity" / "scripts"
+read_snapshot = runpy.run_path(str(SCRIPTS / "dsh_context.py"))["read_snapshot"]
 
 
 class DeepSeekSnapshotTests(unittest.TestCase):

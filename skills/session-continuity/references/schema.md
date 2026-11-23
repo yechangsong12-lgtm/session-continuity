@@ -21,7 +21,6 @@ Required top-level fields:
 | `changed_files[]` | array | Workspace files known to be changed. |
 | `context_to_load[]` | array | Files a new session should read first. |
 | `gates` | object | Resume safety gates. |
-| `triparty` | object | Optional Codex + Claude + Gemini run evidence. |
 
 Gate values:
 
@@ -39,15 +38,6 @@ Gate values:
 - `events.jsonl`
 
 Validation must fail on hash mismatch, unreadable JSON, missing manifest, missing current state, or suspected secrets.
-
-For tri-party workstreams, `review_status: passed` requires:
-
-- `claude-review.md` exists, is non-empty, and contains `TRIPARTY_REVIEW_COMPLETE`.
-- `gemini-review.md` exists, is non-empty, and contains `TRIPARTY_REVIEW_COMPLETE`.
-- `claude-cross-audit.md` and `gemini-cross-audit.md` both contain `TRIPARTY_CROSS_AUDIT_COMPLETE`.
-- `state.json` has `true_triparty_ready: true`, or `merge-status.md` has `Ready for true tri-party synthesis`.
-- Artifact metadata includes the expected `party` and `stage` labels.
-- When `state.json` records artifact SHA256 values, those values match the current files on disk.
 
 Validation blocks resume while another live process owns `.agent/continuity/locks/writer.lock`. A fresh lock with incomplete owner information is also treated as active.
 

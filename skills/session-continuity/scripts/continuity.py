@@ -18,7 +18,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import textwrap
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -252,60 +251,6 @@ def git_changed_files(root: Path) -> list[str]:
     return sorted(set(files))
 
 
-def triparty_artifact_status(path: Path, marker: str, expected_party: str, expected_stage: str) -> str:
-    if not path.exists():
-        return "missing"
-    if path.stat().st_size == 0:
-        return "empty"
-    try:
-        text = read_text(path)
-    except UnicodeDecodeError:
-        return "unreadable"
-    if marker not in text:
-        return "incomplete"
-    if f"party: {expected_party}" not in text or f"stage: {expected_stage}" not in text:
-        return "wrong_metadata"
-    return "completed"
-
-
-def triparty_state_gate(run_dir: Path) -> tuple[str, str]:
-    state_path = run_dir / "state.json"
-    merge_path = run_dir / "merge-status.md"
-    conclusion = ""
-    if state_path.exists():
-        try:
-            state = json.loads(read_text(state_path))
-        except json.JSONDecodeError:
-            return "invalid", conclusion
-        conclusion = str(state.get("conclusion") or "")
-        if state.get("true_triparty_ready") is True:
-            parties = state.get("parties", {})
-            expected_hashes = {
-                "claude-review.md": parties.get("claude", {}).get("review_sha256"),
-                "gemini-review.md": parties.get("gemini", {}).get("review_sha256"),
-                "claude-cross-audit.md": parties.get("claude", {}).get("cross_audit_sha256"),
-                "gemini-cross-audit.md": parties.get("gemini", {}).get("cross_audit_sha256"),
-            }
-            for name, expected in expected_hashes.items():
-                path = run_dir / name
-                if not expected:
-                    return "missing_hash", conclusion
-                if not path.exists():
-                    return "missing_artifact_for_hash", conclusion
-                if sha256_file(path) != expected:
-                    return "hash_mismatch", conclusion
-            return "completed", conclusion
-        return "partial", conclusion
-    if merge_path.exists():
-        text = read_text(merge_path)
-        match = re.search(r"^Conclusion label:\s*(.+)$", text, re.MULTILINE)
-        conclusion = match.group(1).strip() if match else ""
-        if conclusion == "Ready for true tri-party synthesis":
-            return "completed", conclusion
-        return "partial", conclusion
-    return "missing", conclusion
-
-
 def normalize_list(values: list[str] | None) -> list[str]:
     clean: list[str] = []
     for value in values or []:
@@ -320,13 +265,6 @@ def rel(path: Path, root: Path) -> str:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
-
-
-def resolve_against_root(value: str, root: Path) -> Path:
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = root / path
-    return path.resolve()
 
 
 def use_chinese_for_handoff(state: dict[str, Any]) -> bool:
@@ -471,33 +409,6 @@ def build_bootstrap(state: dict[str, Any]) -> str:
         lines.extend(["", "请先完成交接包校验，再继续任务。" if chinese else "Hard stop: validate the continuity package before resuming."])
     lines.append("")
     return "\n".join(lines)
-
-
-def build_portable_handoff(state: dict[str, Any]) -> str:
-    """Render a checked revision for receivers with a different filesystem or only chat access."""
-    target = state.get("target") or ""
-    relative_dir = f".agent/continuity/targets/{target}" if target else ".agent/continuity"
-    target_option = f" --target {target}" if target else ""
-    if use_chinese_for_handoff(state):
-        steps = [
-            "## 在接收端接手", "",
-            f"上面的校验结果来自发送端。如果能访问同一工作区，请在接收端的技能目录运行 "
-            f'`python scripts/validate.py --root "<接收端工作区>"{target_option}`，核对 `{relative_dir}/handoff.md` 的修订号。',
-            "如果只能看到粘贴的摘要，说明当前可见的依据。执行第一项待办前，请用户提供缺少的原始文件或对应片段。",
-            "如需新选模型，从接收端当前账号对该任务提供的选项中，请用户指定或明确委托 Agent 代选。沿用已有的适用选择；开新对话仍需单独同意。",
-            "用用户的语言报告修订号、已复查的证据和下一步。按原任务范围继续，并把结果交回主对话。",
-        ]
-    else:
-        steps = [
-            "## Pick up this task", "",
-            f"The checks above were performed at the source. If you can access the workspace, run "
-            f'`python scripts/validate.py --root "<receiver workspace>"{target_option}` from your installed skill directory '
-            f"and match the revision in `{relative_dir}/handoff.md`.",
-            "If you can only see the pasted summary, identify the evidence you can inspect. Ask for the specific source file or excerpt needed for the first open task.",
-            "When a new model is needed, offer the receiving account's available options. The user can name a model or explicitly delegate the choice. Honor an applicable standing choice and confirm opening any new visible chat separately.",
-            "In the user's language, report the revision, the evidence you checked and your next action. Continue within the original scope and return your findings to the main chat.",
-        ]
-    return build_handoff(state).rstrip() + "\n\n" + "\n".join(steps) + "\n"
 
 
 def write_manifest(cdir: Path, root: Path, state: dict[str, Any]) -> dict[str, Any]:
@@ -1091,42 +1002,18 @@ def command_checkpoint(args: argparse.Namespace) -> int:
             {"text": scrub(item), "source": args.source, "evidence": scrub(args.evidence or "")}
             for item in normalize_list(args.decision)
         ]
-        context_files = [scrub(item) for item in normalize_list(args.context_file)]
+        inputs = normalize_list(args.context_file) or existing.get("context_to_load", [])
+        context_files = [scrub(item) for item in inputs]
         if not context_files:
             state_dir = f".agent/continuity/targets/{slugify(args.target)}" if args.target else ".agent/continuity"
             context_files = [f"{state_dir}/current.yml", f"{state_dir}/handoff.md"]
         changed = sorted(set(scrub(item) for item in (normalize_list(args.changed_file) + git_changed_files(root))))
-        triparty = {
-            "run_dir": scrub(args.triparty_run_dir or ""),
-            "claude_review": "unknown",
-            "gemini_review": "unknown",
-            "cross_audit": "unknown",
-            "state_gate": "unknown",
-            "merge_conclusion": "",
-        }
-        review_status = "not_required"
-        if args.triparty_run_dir:
-            run_dir = resolve_against_root(args.triparty_run_dir, root)
-            triparty["run_dir"] = scrub(str(run_dir))
-            triparty["claude_review"] = triparty_artifact_status(run_dir / "claude-review.md", "TRIPARTY_REVIEW_COMPLETE", "Claude", "review")
-            triparty["gemini_review"] = triparty_artifact_status(run_dir / "gemini-review.md", "TRIPARTY_REVIEW_COMPLETE", "Gemini", "review")
-            claude_cross = triparty_artifact_status(run_dir / "claude-cross-audit.md", "TRIPARTY_CROSS_AUDIT_COMPLETE", "Claude", "cross-audit")
-            gemini_cross = triparty_artifact_status(run_dir / "gemini-cross-audit.md", "TRIPARTY_CROSS_AUDIT_COMPLETE", "Gemini", "cross-audit")
-            triparty["cross_audit"] = "completed" if claude_cross == "completed" and gemini_cross == "completed" else f"claude={claude_cross};gemini={gemini_cross}"
-            state_gate, merge_conclusion = triparty_state_gate(run_dir)
-            triparty["state_gate"] = state_gate
-            triparty["merge_conclusion"] = merge_conclusion
-            required_review_values = [
-                triparty["claude_review"],
-                triparty["gemini_review"],
-                triparty["cross_audit"],
-                triparty["state_gate"],
-            ]
-            review_status = (
-                "passed"
-                if all(value == "completed" for value in required_review_values)
-                else "partial"
-            )
+        # A review of an earlier revision is not an approval of this new checkpoint.
+        previous_review = existing.get("gates", {}).get("review_status")
+        review_status = "partial" if previous_review in {"partial", "passed"} else "not_required"
+        legacy_review_path = (existing.get("triparty") or {}).get("run_dir")
+        if legacy_review_path and legacy_review_path not in context_files:
+            context_files.append(scrub(legacy_review_path))
 
         state: dict[str, Any] = {
             "schema": SCHEMA,
@@ -1154,7 +1041,6 @@ def command_checkpoint(args: argparse.Namespace) -> int:
                 "hash_status": "pending",
                 "bootstrap_status": "ready",
             },
-            "triparty": triparty,
         }
 
         current_text = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
@@ -1175,7 +1061,7 @@ def command_checkpoint(args: argparse.Namespace) -> int:
         write_text(cdir / "handoff.md", build_handoff(state))
         write_text(cdir / "bootstrap.md", build_bootstrap(state))
         manifest = write_manifest(cdir, root, state)
-        snap_dir = cdir / "snapshots" / timestamp()
+        snap_dir = cdir / "snapshots" / f"{timestamp()}-r{revision}"
         snap_dir.mkdir(parents=True, exist_ok=True)
         for name in list(HASHED_FILES) + ["manifest.json"]:
             path = cdir / name
@@ -1271,8 +1157,6 @@ def command_bootstrap(args: argparse.Namespace) -> int:
             print(json.dumps(request["validation"], ensure_ascii=False), file=sys.stderr)
             return 1
         text = request["prompt"]
-    elif args.portable:
-        text = build_portable_handoff(state)
     else:
         text = build_bootstrap(state)
     if args.output:
@@ -1319,7 +1203,6 @@ def configure_checkpoint_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--blocked-item", action="append")
     parser.add_argument("--changed-file", action="append")
     parser.add_argument("--context-file", action="append")
-    parser.add_argument("--triparty-run-dir", default="")
     parser.add_argument("--force-lock", action="store_true")
     parser.set_defaults(func=command_checkpoint)
 
@@ -1333,7 +1216,6 @@ def configure_bootstrap_parser(parser: argparse.ArgumentParser) -> None:
     add_common_root(parser)
     parser.add_argument("--output", default="")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--portable", action="store_true", help="Export a verified handoff summary with receiver-local instructions for another assistant.")
     mode.add_argument("--prepare-thread", action="store_true", help="Prepare a thread request using the validated checkpoint as saved.")
     mode.add_argument("--show-source-model", action="store_true", help="Inspect the source chat's actual model and latest usage. No checkpoint needed.")
     parser.add_argument("--inherit-source-model", action="store_true", help="After approval of an 80 percent full transfer, recheck usage and use the source model. Pair with --approved-model for a user-selected override.")

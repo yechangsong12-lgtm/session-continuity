@@ -18,9 +18,9 @@ The archive starts with `session-continuity/SKILL.md`; the license, references a
 
 ### Try a handoff
 
-Ask: “Prepare a handoff for the current task. Include the source for the first open item and the first check the next session should perform.” With shared files and Python 3.11+, use the checkpoint and validation commands in the [main workflow](../SKILL.md). To export a prompt for a different environment, run `python scripts/bootstrap.py --root "/path/to/work" --portable` from the skill folder. Give the successor the referenced evidence in a location it can open. With chat text alone, ask it to name the source and its next action; report a verified checkpoint revision only after it can open and validate the saved package.
+Ask Claude to record the goal, checked evidence and first open item. In a new Claude chat, reopen the same folder and validate the expected revision. For text-only use, paste the handoff and attach the evidence the next step requires. The receiver should say which files it could actually inspect. [Full workflow](../SKILL.md)
 
-A real session reading of 80% can prompt a checkpoint. Without a reliable reading, offer one at a work boundary. Check the model picker in the receiving account and surface (Chat, Cowork or Code). Offer to keep the source model only if it is selectable there. Apply any in-scope standing choice, or let the user select a verified option or explicitly ask the agent to choose. If the picker is hidden, ask what the user sees; if it lists a single model, name it. Confirm opening the new chat separately. The [terminal status-line adapter](context-settings.en.md) is optional for Claude Code CLI users. This Desktop workflow does not rely on a custom status line appearing in Chat or Cowork.
+Use the reading available in the current mode or checkpoint at a work boundary. Check the model selector for that mode before opening a successor. [Optional terminal status line](context-settings.en.md#configure-the-claude-code-status-line)
 
 ## 简体中文
 
@@ -38,6 +38,6 @@ A real session reading of 80% can prompt a checkpoint. Without a reliable readin
 
 ### 试一次交接
 
-可以说：“整理当前任务的交接，附上第一项待办的证据和接手后最先要核对的内容。”有共享工作区和 Python 3.11+ 时，按[中文流程](workflow.zh-CN.md)保存并校验交接包。从技能目录执行 `python scripts/bootstrap.py --root "/path/to/work" --portable` 可导出跨环境的接手提示。把对应证据放到接手方能打开的位置；仅有聊天文本时，用对方实际读到的来源和下一步确认接手。有完整交接包且校验成功后，才报告已验证的修订号。
+让 Claude 写明任务目标、已查证的依据和第一项待办。新 Claude 对话打开同一文件夹后核验预期修订；只能传文字时，粘贴交接摘要并附上下一步需要的原始资料。接手方说明实际看到了哪些文件。[完整流程](workflow.zh-CN.md)
 
-当前会话实际用量达到 80% 时可以存档，没有可靠读数时就在阶段结束时提示。先核对目标账号及 Chat、Cowork 或 Code 对应选择器里的模型；原模型在目标可选时才提议沿用。已有适用偏好时沿用，或请用户从可用选项中指定、明确委托 Agent 选择。看不到列表就向用户核对；只有一个选项就说明。开可见对话仍需单独同意。Claude Code 命令行的[状态栏适配器](context-settings.md)可单独配置，Chat 和 Cowork 通过上述流程使用。
+按当前模式的真实读数或阶段节点存档。开接续对话前核对该模式的模型选择器。[可选的命令行状态栏](context-settings.md)

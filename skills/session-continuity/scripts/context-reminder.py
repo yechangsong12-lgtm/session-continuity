@@ -14,20 +14,12 @@ from uuid import UUID
 
 THRESHOLD_PERCENT = 80
 CHECKPOINT_INSTRUCTION = (
-    "Use $session-continuity to save and validate a checkpoint in this chat. Preserve all active user requests. "
-    "Use the language requested by the user or used in the source conversation. Compare with the latest real "
-    "usage before suggesting a move. If compaction has reduced usage, continue here. Complete minor edits here. "
-    "For longer work, distinguish a bounded side task from a necessary move of the entire remaining workstream. "
-    "For a visible side chat, ask whether to open it and which model to use. For a necessary full transfer "
-    "at 80%, read the active model from the source chat. Check the destination account's visible-chat picker "
-    "before offering to inherit that provider and model. Offer a verified model, or let the user explicitly "
-    "delegate model selection to the agent. Honor a matching standing choice. If the destination list cannot "
-    "be read, ask the user to check its picker. Wait for consent to open the chat, then pass the selected model "
-    "to the host. The checkpoint preference and a generic 'continue' or '继续' grant neither "
-    "creation nor archive permission. Reuse a matching destination if one already exists. For a full transfer, "
-    "verify destination takeover before offering to archive the source when needed. For a side task, keep the "
-    "source active, merge the results, and consider archiving the side chat only once the parent task is complete "
-    "or under the user's explicit cleanup instructions. Archive a chat only within the user's consent."
+    "Use $session-continuity to save and validate a checkpoint in this chat. Use the language requested by the user. "
+    "Recheck the current usage after compaction. For a small revision or 'continue' or '继续', keep working here. "
+    "Suggest a side chat only for a separate deliverable that needs the user's ongoing follow-up while the main task can continue. "
+    "For a necessary whole-task transfer, read the active model from the source chat. Ask whether to open "
+    "a new chat in this assistant and which model to use, offering the current model if available. Wait for consent. "
+    "Reuse an existing destination and verify its acknowledgement. Apply the skill's distinct archive rules for a side chat or a full transfer."
 )
 READ_BLOCK = 128 * 1024
 RESET_RECORD = re.compile(

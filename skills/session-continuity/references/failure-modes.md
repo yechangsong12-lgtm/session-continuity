@@ -7,10 +7,6 @@ Hard-stop failures:
 - Missing `current.yml` or invalid JSON-compatible YAML.
 - Missing `manifest.json`.
 - A live process owns `locks/writer.lock`, or a newly created lock is still waiting for its owner information.
-- A tri-party workstream claims complete review without Claude and Gemini evidence files.
-- Tri-party evidence files are empty, lack completion markers, or lack `true_triparty_ready` / merge-gate readiness.
-- Tri-party artifact metadata does not match the expected party/stage.
-- Tri-party `state.json` hashes do not match current artifact files.
 - Credential-bearing URLs such as database DSNs appear in continuity state.
 
 Soft failures:
@@ -25,4 +21,3 @@ Recovery steps:
 2. If hashes fail, inspect whether files were manually edited after checkpoint.
 3. If redaction fails, remove secrets and re-run checkpoint.
 4. If the lock is stale, rerun checkpoint with `--force-lock`.
-5. If tri-party evidence is partial, run or resume the tri-party framework before calling the result complete.

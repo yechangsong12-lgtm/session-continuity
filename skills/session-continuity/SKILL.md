@@ -1,75 +1,50 @@
 ---
 name: session-continuity
-description: Delegate bulk research, checkpoint long tasks, and resume across Codex, DeepSeek Harness, WorkBuddy and Claude. Codex 1M context setup · 批量整理与搜索、80% 存档、开聊选型与跨助手交接。
+description: Keep work in the current chat, delegate bounded research, or hand off to a new chat in the same assistant. 同一助手内的任务分工、80% 存档、跨对话接续和归档。Optional Codex 1M setup.
 ---
 
 # Session Continuity
 
 English · [简体中文](references/workflow.zh-CN.md)
 
-The checkpoint tools are adapted from [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). [MIT license and copyright notices](LICENSE).
+Keep the user's task in its current chat by default. Use a new visible chat in the **same assistant** when there is a specific reason below. Carry forward all compatible requests and use the user's language.
 
-Use the user's requested language for summaries, alerts you write, takeover acknowledgements and the archive question. When the user has not specified a language, follow the conversation. Pass that choice along with the work. Keep IDs, paths, source quotes and numerical evidence intact. Use side-by-side translations when requested. 中文任务可直接使用上方的简体中文指南。
+## Choose where the work goes
 
-## Decide where the work belongs
-
-| Situation | Action |
+| What is happening? | What to do |
 | --- | --- |
-| Bulk data cleanup, straightforward searches, long logs or clearly bounded checks | Delegate to a subagent with its own context. Specify scope, input locations, expected result and files it may change. |
-| “Continue”, a small revision to the same deliverable, or fixing one image | Continue in the same chat. |
-| Trying a second approach from the same discussion | Explain the alternative and ask whether to branch and which available model to use. Wait for consent. |
-| A new goal, or a side task the user wants to monitor and direct independently | Ask whether to open a separate chat and which model to use. Offer the current model, a specific available model, or agent selection. Wait for consent. Keep the main chat active. |
-| The source chat reaches 80% of its effective context window | Follow the user's reminder or automatic checkpoint preference below. |
+| The user says “continue”, requests a correction, or is still refining the same deliverable. | Work here. Fixing the teeth in one product image belongs with the rest of that image set. |
+| A bounded search or batch job can return one result for the main task. | Use a background subagent if available. Bring back key findings, sources and the location of any detailed file. The main chat stays active. |
+| There is a separate deliverable that needs the user's own follow-up across multiple rounds, and the main task can proceed independently. | Propose a side chat. For example, one supplier's conflicting quote needs a reply and a later purchasing decision while the catalog work continues. Explain the part that would move and ask whether to open the chat and which model to use. |
+| The user expressly asks for a new chat, or the **whole unfinished task** still needs to move after a high-context checkpoint. | Honor the requested scope. Confirm any outstanding creation or model choice, then use the handoff steps below. |
 
-Codex may select this skill from the task description. The delegation, branch and fresh-chat choices draw on Claude Code's guidance. The 80% threshold belongs to this skill. [Claude Code subagents](https://code.claude.com/docs/en/sub-agents) · [Sessions](https://code.claude.com/docs/en/sessions) · [Best practices](https://code.claude.com/docs/en/best-practices)
+**Model choice.** For a new model choice, offer the models actually available to that account for that kind of task. The user can name one or let the agent choose. Apply an existing preference that covers this task. When delegated the choice, use a capable, economical model and say which one. If the user has already authorized a specific chat, ask only for the missing selection.
 
-A background subagent returns its findings to the current chat. An ordinary side chat is a user-visible workspace the user can direct independently. When requesting consent for a side chat, clarify whether the model choice applies this time or should become a fixed or automatic preference. Once the side chat takes over its part, the main chat continues. A side task never prompts archiving the main chat. Bring the side chat’s results, sources and detailed file locations back to the main chat first. Once both tasks are complete, check for outstanding work or review, evidence held only in the side chat, and a request to keep it. Keep the side chat available while any of those remain. When it is eligible for cleanup, archive the named **side chat** automatically only if the user authorized automatic cleanup. Otherwise ask about that specific side chat.
+## Checkpoint and resume
 
-## Delegate and bring back the findings
+1. At **80% of the current chat's effective window**, follow the user's reminder or automatic checkpoint setting. Check the latest reading again after compaction. Keep working here if there is room or only a small change remains. If no reliable reading exists, offer a checkpoint at a work boundary.
+2. Save the current goal, corrections, decisions and reasons, checked files or sources, pending work and one concrete next action. Keep credentials and access-bearing URLs out. For local work use the same workspace and optional `--target` for each command:
 
-When selecting a model, check the destination host, account and execution mode. Use the picker or routing list for the actual operation: background agents and visible chats may have different choices. Offer two ways to choose: the user names an available model, or explicitly lets the agent decide. Apply a matching standing preference without asking again. Without either, ask once before dispatch. An agent authorized to choose should pick a capable, economical option from the verified list and identify it. If the list is inaccessible, ask the user to check the picker; if it shows only one option, say which one. Ordinary work in the current chat continues on its current model.
+   ```text
+   python scripts/checkpoint.py --root WORKSPACE --active-goal "Reconcile supplier quotes" --context-file quotes.csv --open-task "Check the currency in row 31"
+   python scripts/validate.py --root WORKSPACE
+   python scripts/bootstrap.py --root WORKSPACE
+   ```
 
-Ask the subagent for **key findings, sources and the location of detailed results**. Include unresolved discrepancies and the source date, page, sheet or row when it matters. Reuse existing detail files. A short search can return its links directly. In the main chat, check the figures and samples that affect the decision. When the host lacks independent subagents or model selection, describe how the work was performed.
+   Read `.agent/continuity/handoff.md` for the summary. If the chat only accepts text, give the user a concise handoff they can paste into a **new chat in this assistant** with the evidence it needs. Distinguish a file-verified revision from a summary reviewed in chat.
+3. For a full transfer at 80%, name the current model and offer to keep it if available. Ask “Open the next chat with this model, choose another, or stay here?” Wait for the user's choice. Recheck usage and model before creating anything. Reuse the existing destination if an earlier attempt already created it.
+4. In the new chat, validate the expected revision when files are available, inspect an original source for the first open task and report the next action. The main chat checks that acknowledgement. A newly created chat alone does not establish takeover.
 
-## Set a 1M context window in Codex
+## Close the right chat
 
-When the user asks for **1M (1,000,000 tokens)**, including in an installation request, check the active Codex model and its documented limit. If supported, run `python scripts/context_window.py --set 1000000` from the installed skill directory, then read back the setting with `python scripts/context_window.py`. A plain installation leaves the window as configured. Report the configured value and, when a session using the new configuration is available, its observed effective window separately. Base the 80% threshold on that effective window. [Verification steps](references/context-settings.en.md#codex-1m)
+A side chat returns its results to the main chat. Consider archiving the **side chat** when both tasks are done, its evidence is accessible from the main chat and nothing needs review or retention. Archive it automatically only under the user's cleanup preference; otherwise ask about that specific chat.
 
-## What to do at 80%
+For a full transfer, recheck the source chat's usage and remaining work. Ask about archiving the **source chat** only after the entire task has moved, the new chat confirmed takeover, the source still meets the threshold and has no remaining work. Archive that source only with explicit consent.
 
-Select the guide for the running host: [DeepSeek Harness](references/deepseek-harness.md), [WorkBuddy](references/workbuddy.md), or [Claude Desktop Chat, Cowork and Code](references/claude-desktop.md). Pass the host name to `checkpoint.py --source` when recording a decision outside Codex, for example `--source workbuddy`. Use that host's task-specific model and context evidence. Only apply the Codex hook, rollout inspection and thread commands in Codex. When hosts use different paths or share only messages, export a verified, self-contained brief with `bootstrap.py --root WORKSPACE --portable`. User-supplied evidence references stay in the brief. Share the original files needed by the receiver through a location the user authorized.
+## Setup and commands
 
-For the Codex window setting, event hook and Claude Code status line, see [context settings in English](references/context-settings.en.md) or [简体中文](references/context-settings.md).
+- **Codex.** On an explicit 1M request, verify model support and run `python scripts/context_window.py --set 1000000`. Read back the setting, then check a fresh session's effective window. [1M, the 80% hook and transfer commands](references/context-settings.en.md)
+- **Other supported assistants.** Use the installation path, model selector and usage reading for the assistant where the task started. [DeepSeek Harness](references/deepseek-harness.md) · [WorkBuddy](references/workbuddy.md) · [Claude Desktop](references/claude-desktop.md) · [Claude Code CLI status line](references/context-settings.en.md#configure-the-claude-code-status-line)
+- **Troubleshooting.** [Checkpoint format](references/schema.md) · [Recovery](references/failure-modes.md)
 
-New installations show a reminder when the Codex hook is registered. A user can enable automatic checkpointing in their personal `$CODEX_HOME/hooks/session-continuity.json` with `{"auto_checkpoint_at_80": true}`. That choice lets the source save and validate its checkpoint automatically. For a full-task migration, read the actual source model and verify that the destination offers the same provider and model for this chat. If available, ask one question: “Open a successor chat using the current model, X? You can choose another model.” Accepting the proposed model covers model selection for this transfer. Create the chat only after the user explicitly agrees to open it this time. “Continue” keeps the work in this chat. If the source model is unavailable at the destination, offer the destination's actual choices and the option to delegate the decision. Sol in Codex does not imply Sol is available in DeepSeek Harness, WorkBuddy or Claude. Permission to pick a model and permission to open a visible chat are separate.
-
-1. **Verify the crossing.** Use the host's effective window and an actual usage sample from the source chat. For a deferred event after compaction, verify the earlier qualifying sample in that same source chat and recheck its current usage. If compaction has restored ample room, keep the source chat active and reassess the need for transfer. Simulations use only their designated test chats. If usage is unavailable, offer a checkpoint at a work boundary and describe what prompted it.
-2. **Checkpoint once.** Check existing requests and receipts for this source chat and transfer. Reuse a known successor or pending creation ID. Save and validate the current revision, including the workspace, active goal, outstanding requests and next action.
-3. **Create the successor.** Use the validated startup prompt and original workspace. Supply the request’s verified `approved_model` explicitly to the host’s create action. Record the returned ID and verify the actual model in the successor. If the model is unavailable, unverified, or differs from what the user approved, keep the source open and ask how to proceed. If creation is uncertain, check the host and receipt before retrying. Keep one owner for the work while the source observes the handoff.
-4. **Verify takeover.** In its own chat, the successor validates the expected revision, opens the handoff, checks the evidence for the first task, and states its next action or verified completion or blocker in the user's language. The source observes this real response through the host, for example with Codex `wait_threads`. Match the chat ID, revision and task. A pending ID or a receipt identifies the destination. Its reply establishes takeover.
-5. **Ask about the source only for a full migration.** Immediately before asking, measure the actual source again and check for additional work left there. Keep it active if usage has fallen after compaction or work remains. Confirm the source still meets the 80% threshold, the entire main task moved and the successor acknowledged takeover. Then provide the destination and ask once, “The new chat has taken over. Would you like to archive this original chat?” Archive only the identified source after explicit agreement. Also honor a user’s explicit archive request for a named chat. A simulation may exercise the archive question only for its designated temporary source if the user requested that test. Side chats and handoff tests leave business chats active. If creation or verification remains pending, deliver the checkpoint and describe what remains.
-
-Claude Code's status-line adapter displays usage and the threshold reminder. The user can request a handoff when the prompt appears. Other hosts can use their own context readings, model routing and chat controls.
-
-## Write the checkpoint
-
-- **Goal and constraints.** Name the deliverable, destination, acceptance criteria and authorized scope. Carry forward compatible requests added mid-task alongside the latest corrections. Mark decisions that still belong to the user.
-- **Progress and decisions.** Separate completed and verified work, active jobs and remaining tasks. For important decisions, record who decided, the rationale and the evidence. Distinguish user approval from an inferred preference or a successful technical check.
-- **Evidence and artifacts.** Include source links or paths, sheet names and rows, dates and verification results. Record running job IDs and the next safe check. Keep credentials, access-bearing URLs and full chat logs out of the checkpoint.
-- **First next action.** Identify a concrete step, the file or system to use, and the expected result. Include relevant blockers or failed approaches. From a fresh chat, verify that the cited evidence can be found.
-
-## Save, resume and record a destination
-
-Run the scripts with Python 3.11+ from the installed skill directory. Pass the same `--root` and optional `--target` throughout. For independent goals in the same workspace, use distinct short ASCII target names and put the full user-facing labels in the summary. Read the current checkpoint before revising it. Keep active decisions, evidence, tasks and blockers in the next revision.
-
-```text
-python scripts/checkpoint.py --root "/path/to/work" --latest-user-request "Check quoted prices" --active-goal "Reconcile the price sheet" --decision "Rows 2 through 30 match the supplier file" --context-file "supplier-quotes.csv" --open-task "Check currency on row 31 against the supplier quote"
-python scripts/validate.py --root "/path/to/work"
-python scripts/bootstrap.py --root "/path/to/work"
-```
-
-- [checkpoint.py](scripts/checkpoint.py) saves versioned state under `.agent/continuity/`. Use `--source` for the decision's origin and repeat `--decision`, `--context-file`, `--changed-file`, `--blocked-item` and `--open-task` as needed. Attach individual sources to their decisions. Use `--evidence` for shared evidence.
-- [validate.py](scripts/validate.py) checks the package, hashes, redaction indicators and writer lock. Review external sources again where they may have changed. Preserve partial review status. Read `handoff.md` and use [bootstrap.py](scripts/bootstrap.py) for the startup prompt.
-- In Codex, for an 80% full migration, first read the source model with `bootstrap.py --show-source-model --thread-id UUID`. Substitute the actual UUID and pass the chosen workspace and target to subsequent commands. Present the detected model in the one confirmation above. After consent, call `bootstrap.py --prepare-thread --inherit-source-model --expected-source-model MODEL_SHOWN --thread-id UUID`. If the user chose a different model, add `--approved-model OVERRIDE`. Check that the request’s `approved_model` matches what the user approved, then pass it as `model` to Codex `create_thread`. If the source model cannot be verified or has changed since confirmation, keep the source active and ask the user. For an ordinary side chat, ask whether to open it and which model to use together. Once approved, use `bootstrap.py --prepare-thread --approved-model MODEL_ID` and pass the request’s model explicitly. Use the validated prompt when creating the new chat. Record the host's returned ID with [thread_receipt.py](scripts/thread_receipt.py) and `--created-thread-id`, or use `--pending-worktree-id` while setup is pending. Then verify takeover as described above. A failed preparation leaves the source active. A request saved by an earlier attempt applies only to that earlier attempt. Replace MODEL_SHOWN with the exact source model ID from the confirmation prompt. If it has changed, preparation stops for fresh consent.
-- Hosts with filesystem access can use the same checkpoint. Adjust the startup command to the receiver's available interpreter or host tools. For chat-only environments, provide a copyable handoff using the same fields.
-- Use [guard.py](scripts/guard.py) for broader pressure signals such as long logs. Its checkpoint suggestions complement the measured 80% event. See [failure recovery](references/failure-modes.md), [checkpoint schema](references/schema.md) and [three-party review](references/triparty.md) as needed.
+The checkpoint tools are adapted from [r-design-j/codex-session-continuity-skill](https://github.com/r-design-j/codex-session-continuity-skill). [MIT license and copyright notices](LICENSE)

@@ -41,7 +41,11 @@ python scripts/context_window.py
 {"auto_checkpoint_at_80": true}
 ```
 
-启用后，先核实真实来源已达到阈值且仍需整体迁移。若压缩已腾出充足空间，保留原对话并重新判断。可以先自动保存并校验现场。整项迁移时，先用只读的 `bootstrap.py --show-source-model --thread-id UUID` 查原对话实际模型 X。先核对接续对话在目标账号中可选的模型。X 在目标可用时，问“是否用 X 开接续对话？也可换模型。”若 X 不可用，展示目标可选项，请用户指定或明确委托 Agent 选择。没有可靠列表时询问用户在选择器里看到的选项。用户明确同意本次开聊后，再用 `--prepare-thread --inherit-source-model --expected-source-model MODEL_SHOWN --thread-id UUID` 准备请求。改选模型时增加 `--approved-model OVERRIDE`。创建时将请求的 `approved_model` 显式传入并验证接收方实际模型。缺失、不可用或无法验证时，保留原对话并询问。整项任务迁往同一工作区的新对话。新对话确认已读取对应版本、核验交接并能指出下一步后，在询问归档前再次测量来源用量，并确认原对话没有剩余工作。压缩后已回落或仍有工作时保留原对话。普通旁支继续保留主对话；先交回证据，主任务和子任务均完成后，按[普通旁支整理规则](workflow.zh-CN.md)只考虑归档该子对话。模拟演练仅可在指定临时原对话内询问归档，真实业务对话保持活跃。只有用户明确同意才执行归档。如果宿主未提供创建对话或验证接手的能力，交付交接材料并说明尚缺哪一步。用户随时可给本次交接新的指示。 将 MODEL_SHOWN 替换为刚才向用户展示的原模型 ID；若模型发生变化，命令会停止并要求重新确认。
+启用后根据最新有效读数存档。是否建议换对话，按[开聊与归档规则](workflow.zh-CN.md)判断。
+
+80% 整项迁移时，先用 `bootstrap.py --show-source-model --thread-id UUID` 读取向用户展示的模型。用户同意开接续对话后，执行 `bootstrap.py --root WORKSPACE --prepare-thread --inherit-source-model --expected-source-model MODEL_SHOWN --thread-id UUID`。MODEL_SHOWN 填刚才实际展示的模型 ID；用户明确改选时加 `--approved-model OVERRIDE`。普通旁支已获许可时使用 `--prepare-thread --approved-model MODEL_ID`。创建时显式传入请求里的 `approved_model`，准备失败时重新核对。
+
+使用 `thread_receipt.py --root WORKSPACE --created-thread-id ID` 记录新对话；工作树仍待就绪时用 `--pending-worktree-id ID`。各步沿用同一可选 `--target`。通过新对话的实际答复确认修订、证据与下一步。
 
 `UserPromptSubmit` 和 `PostToolUse` 可把达标事件交给模型。在回合结束时首次发现达标，`Stop` 可要求模型继续一轮。若在 `PreCompact` 首次发现达标，脚本记录待处理事件，在下个可注入的节点交给模型；希望在压缩后的下一次模型调用前送达时，可额外注册下述 `SessionStart` 事件。 [Codex Hook 事件与输出](https://learn.chatgpt.com/docs/hooks#hooks)
 
